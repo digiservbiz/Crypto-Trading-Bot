@@ -1,0 +1,26 @@
+# Root .gitignore additions
+/models/*
+!/models/.gitkeep
+!/models/.gitignore
+
+/data/*
+!/data/.gitkeep
+!/data/.gitignore
+
+# Sensitive files (always exclude)
+.env
+*.key
+*.secret
+# Root .gitignore additions
+/models/*
+!/models/.gitkeep
+!/models/.gitignore
+
+/data/*
+!/data/.gitkeep
+!/data/.gitignore
+
+# Sensitive files (always exclude)
+.env
+*.key
+*.secret
