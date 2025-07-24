@@ -1,0 +1,25 @@
+import torch
+import joblib
+from models import LSTMModel  # Your model class
+
+class AIEngine:
+    def __init__(self):
+        self.lstm = self._load_lstm()
+        self.garch = joblib.load('/app/models/garch/model.pkl')
+        self.anomaly = joblib.load('/app/models/anomaly/model.joblib')
+    
+    def _load_lstm(self):
+        model = LSTMModel()
+        model.load_state_dict(torch.load('/app/models/lstm/model.pt'))
+        model.eval()
+        return model
+    
+    def predict(self, data):
+        lstm_out = self.lstm(data)  # Expects preprocessed tensor
+        vol = self.garch.forecast(horizon=1).variance.iloc[-1]
+        is_anomaly = self.anomaly.predict(data['volume'])
+        return {
+            'direction': lstm_out > 0.5,
+            'volatility': vol,
+            'is_anomaly': is_anomaly == -1
+        }
