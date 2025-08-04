@@ -1,0 +1,24 @@
+# Configuration for the crypto trading bot
+
+data:
+  sample_data_path: data/sample_ohlcv.csv
+  symbol: 'BTC/USDT'
+  timeframe: '5m'
+  lookback: 60
+
+models:
+  garch:
+    p: 1
+    q: 1
+  anomaly:
+    contamination: 0.05
+  lstm:
+    hidden_size: 64
+    num_layers: 2
+
+training:
+  batch_size: 2048
+  max_epochs: 100
+
+inference:
+  models_dir: 'models'
