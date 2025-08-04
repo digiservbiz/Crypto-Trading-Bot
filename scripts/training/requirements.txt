@@ -4,4 +4,4 @@ numpy
 scikit-learn
 arch
 joblib
-torch
+pytorch-lightning
