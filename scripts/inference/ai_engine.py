@@ -1,16 +1,17 @@
 import torch
 import joblib
-from models import LSTMModel  # Your model class
+from ..models import LSTMModel
 
 class AIEngine:
-    def __init__(self):
+    def __init__(self, models_dir='models'):
+        self.models_dir = models_dir
         self.lstm = self._load_lstm()
-        self.garch = joblib.load('/app/models/garch/model.pkl')
-        self.anomaly = joblib.load('/app/models/anomaly/model.joblib')
+        self.garch = joblib.load(f'{self.models_dir}/garch/model.joblib')
+        self.anomaly = joblib.load(f'{self.models_dir}/anomaly/model.joblib')
     
     def _load_lstm(self):
         model = LSTMModel()
-        model.load_state_dict(torch.load('/app/models/lstm/model.pt'))
+        model.load_state_dict(torch.load(f'{self.models_dir}/lstm/model.pt'))
         model.eval()
         return model
     
