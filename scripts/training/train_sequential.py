@@ -41,18 +41,31 @@ class CryptoDataModule(pl.LightningDataModule):
         dataset = TensorDataset(self.X[4000:], self.y[4000:])  # Last 1000 for validation
         return DataLoader(dataset, batch_size=self.config['training']['batch_size'], num_workers=4, pin_memory=True)
 
-from models import LSTMModel
+from models import LSTMModel, TransformerModel
 
 # 2. Lightning Model
-class LitLSTM(pl.LightningModule):
+class LitSequential(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.save_hyperparameters()
-        self.model = LSTMModel(
-            input_size=3,
-            hidden_size=config['models']['lstm']['hidden_size'],
-            num_layers=config['models']['lstm']['num_layers']
-        )
+        self.config = config
+        if config['models']['model_type'] == 'lstm':
+            self.model = LSTMModel(
+                input_size=3,
+                hidden_size=config['models']['lstm']['hidden_size'],
+                num_layers=config['models']['lstm']['num_layers']
+            )
+        elif config['models']['model_type'] == 'transformer':
+            self.model = TransformerModel(
+                input_size=3,
+                d_model=config['models']['transformer']['d_model'],
+                nhead=config['models']['transformer']['nhead'],
+                num_encoder_layers=config['models']['transformer']['num_encoder_layers'],
+                dim_feedforward=config['models']['transformer']['dim_feedforward'],
+                dropout=config['models']['transformer']['dropout']
+            )
+        else:
+            raise ValueError(f"Unknown model type: {config['models']['model_type']}")
         self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, x):
@@ -88,11 +101,11 @@ class LitLSTM(pl.LightningModule):
 def train(config):
     # Setup
     dm = CryptoDataModule(config)
-    model = LitLSTM(config)
+    model = LitSequential(config)
     
     # Callbacks
     checkpoint_cb = ModelCheckpoint(
-        dirpath='models/lstm',
+        dirpath=f"models/{config['models']['model_type']}",
         filename='model',
         save_top_k=1,
         monitor='train_loss'

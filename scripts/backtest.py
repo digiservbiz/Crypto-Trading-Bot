@@ -11,7 +11,7 @@ def backtest(config):
     df.dropna(inplace=True)
 
     # Load the AI engine
-    ai_engine = AIEngine(models_dir=config['inference']['models_dir'])
+    ai_engine = AIEngine(config)
 
     # Simulate the trading strategy
     positions = []
