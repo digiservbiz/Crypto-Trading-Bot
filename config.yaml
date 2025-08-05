@@ -7,6 +7,7 @@ data:
   lookback: 60
 
 models:
+  model_type: 'lstm' # Can be 'lstm' or 'transformer'
   garch:
     p: 1
     q: 1
@@ -15,6 +16,12 @@ models:
   lstm:
     hidden_size: 64
     num_layers: 2
+  transformer:
+    d_model: 64
+    nhead: 4
+    num_encoder_layers: 2
+    dim_feedforward: 256
+    dropout: 0.1
 
 training:
   batch_size: 2048
@@ -22,3 +29,8 @@ training:
 
 inference:
   models_dir: 'models'
+
+exchange:
+  name: 'binance'
+  api_key: 'YOUR_API_KEY'
+  secret_key: 'YOUR_SECRET_KEY'

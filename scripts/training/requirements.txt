@@ -6,3 +6,5 @@ arch
 joblib
 pytorch-lightning
 pyyaml
+pandas-ta
+streamlit

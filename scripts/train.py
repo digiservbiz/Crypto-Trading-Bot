@@ -1,8 +1,8 @@
 import argparse
 import yaml
-from .training.train_anomaly import train_anomaly
-from .training.train_garch import train_garch
-from .training.train_lstm import train as train_lstm
+from scripts.training.train_anomaly import train_anomaly
+from scripts.training.train_garch import train_garch
+from scripts.training.train_sequential import train as train_sequential
 
 def main():
     parser = argparse.ArgumentParser(description='Train a model.')
@@ -16,8 +16,8 @@ def main():
         train_anomaly(config)
     elif args.model == 'garch':
         train_garch(config)
-    elif args.model == 'lstm':
-        train_lstm(config)
+    elif args.model == 'sequential':
+        train_sequential(config)
     else:
         print(f"Unknown model: {args.model}")
 
