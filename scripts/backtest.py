@@ -43,13 +43,32 @@ def backtest(config):
     df['position'] = pd.Series(positions, index=df.index[config['data']['lookback']:])
     df['strategy_returns'] = df['position'].shift(1) * df['returns']
 
-    # Print performance summary
-    print("Backtest Results:")
-    print(f"Total Return: {df['strategy_returns'].sum():.4f}")
-    print(f"Sharpe Ratio: {df['strategy_returns'].mean() / df['strategy_returns'].std() * (252**0.5):.2f}")
+    # Simulate transaction costs
+    transaction_costs = 0.001
+    df['strategy_returns'] = df['strategy_returns'] - (df['position'].diff().abs() * transaction_costs)
 
+    # Calculate performance metrics
+    cumulative_returns = (1 + df['strategy_returns']).cumprod()
+    total_return = cumulative_returns.iloc[-1] - 1
+    sharpe_ratio = df['strategy_returns'].mean() / df['strategy_returns'].std() * (252**0.5)
+
+    peak = cumulative_returns.cummax()
+    drawdown = (cumulative_returns - peak) / peak
+    max_drawdown = drawdown.min()
+    calmar_ratio = total_return / abs(max_drawdown)
+
+    return {
+        'total_return': total_return,
+        'sharpe_ratio': sharpe_ratio,
+        'max_drawdown': max_drawdown,
+        'calmar_ratio': calmar_ratio,
+        'cumulative_returns': cumulative_returns
+    }
 
 if __name__ == "__main__":
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
-    backtest(config)
+    results = backtest(config)
+    print("Backtest Results:")
+    print(f"Total Return: {results['total_return']:.4f}")
+    print(f"Sharpe Ratio: {results['sharpe_ratio']:.2f}")

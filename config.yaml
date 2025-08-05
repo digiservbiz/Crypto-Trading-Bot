@@ -29,3 +29,8 @@ training:
 
 inference:
   models_dir: 'models'
+
+exchange:
+  name: 'binance'
+  api_key: 'YOUR_API_KEY'
+  secret_key: 'YOUR_SECRET_KEY'
