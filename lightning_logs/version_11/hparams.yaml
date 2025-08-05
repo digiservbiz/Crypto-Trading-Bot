@@ -1,0 +1,28 @@
+config:
+  data:
+    lookback: 60
+    sample_data_path: data/sample_ohlcv.csv
+    symbol: BTC/USDT
+    timeframe: 5m
+  inference:
+    models_dir: models
+  models:
+    anomaly:
+      contamination: 0.05
+    garch:
+      p: 1
+      q: 1
+    lstm:
+      hidden_size: 64
+      num_layers: 2
+    model_type: transformer
+    transformer:
+      d_model: 64
+      dim_feedforward: 256
+      dropout: 0.1
+      nhead: 4
+      num_encoder_layers: 2
+  training:
+    batch_size: 2048
+    max_epochs: 100
+input_size: 8

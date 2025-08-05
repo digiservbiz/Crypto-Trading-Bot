@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class LSTMModel(nn.Module):
-    def __init__(self, input_size=3, hidden_size=64, num_layers=2):
+    def __init__(self, input_size, hidden_size=64, num_layers=2):
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=input_size,
@@ -37,7 +37,7 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 class TransformerModel(nn.Module):
-    def __init__(self, input_size=3, d_model=64, nhead=4, num_encoder_layers=2, dim_feedforward=256, dropout=0.1):
+    def __init__(self, input_size, d_model=64, nhead=4, num_encoder_layers=2, dim_feedforward=256, dropout=0.1):
         super().__init__()
         self.model_type = 'Transformer'
         self.pos_encoder = PositionalEncoding(d_model, dropout)

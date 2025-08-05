@@ -1,7 +1,7 @@
 import torch
 import joblib
 from models import LSTMModel, TransformerModel
-from training.train_sequential import LitSequential
+from training.train_sequential import LitSequential, CryptoDataModule
 
 class AIEngine:
     def __init__(self, config):
@@ -12,7 +12,13 @@ class AIEngine:
         self.anomaly = joblib.load(f'{self.models_dir}/anomaly/model.joblib')
     
     def _load_sequential_model(self):
-        model = LitSequential.load_from_checkpoint(f"{self.models_dir}/{self.config['models']['model_type']}/model.ckpt")
+        dm = CryptoDataModule(self.config)
+        dm.prepare_data()
+        model = LitSequential.load_from_checkpoint(
+            f"{self.models_dir}/{self.config['models']['model_type']}/model.ckpt",
+            config=self.config,
+            input_size=len(dm.features)
+        )
         model.eval()
         return model
     

@@ -2,12 +2,16 @@ import pandas as pd
 import yaml
 from inference.ai_engine import AIEngine
 import torch
+import pandas_ta as ta
 
 def backtest(config):
     # Load historical data
     df = pd.read_csv(config['data']['sample_data_path'])
     df['returns'] = df['close'].pct_change()
     df['volatility'] = df['returns'].rolling(20).std()
+    df.ta.macd(append=True)
+    df.ta.rsi(append=True)
+    df.ta.bbands(append=True)
     df.dropna(inplace=True)
 
     # Load the AI engine
@@ -15,10 +19,11 @@ def backtest(config):
 
     # Simulate the trading strategy
     positions = []
+    features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
     for i in range(config['data']['lookback'], len(df)):
         # Prepare the input data for the model
         model_input_tensor = torch.FloatTensor(
-            df.iloc[i-config['data']['lookback']:i][['close', 'volume', 'volatility']].values
+            df.iloc[i-config['data']['lookback']:i][features].values
         ).unsqueeze(0)
 
         model_input_dict = {
