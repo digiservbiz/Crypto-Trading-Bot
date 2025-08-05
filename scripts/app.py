@@ -73,39 +73,46 @@ def main():
         balance = exchange.get_balance('USDT')
         st.write(f"USDT Balance: {balance['free']:.2f}")
 
+from scripts.logger import get_logger
+
+logger = get_logger(__name__)
+
 def run_bot(config):
     ai_engine = AIEngine(config)
     exchange = Exchange(config)
     position = None
 
     while st.session_state.bot_running:
-        # Fetch data
-        ohlcv = exchange.exchange.fetch_ohlcv(config['data']['symbol'], config['data']['timeframe'], limit=config['data']['lookback'])
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['returns'] = df['close'].pct_change()
-        df['volatility'] = df['returns'].rolling(20).std()
-        df.ta.macd(append=True)
-        df.ta.rsi(append=True)
-        df.ta.bbands(append=True)
-        df.dropna(inplace=True)
+        try:
+            # Fetch data
+            ohlcv = exchange.exchange.fetch_ohlcv(config['data']['symbol'], config['data']['timeframe'], limit=config['data']['lookback'])
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['returns'] = df['close'].pct_change()
+            df['volatility'] = df['returns'].rolling(20).std()
+            df.ta.macd(append=True)
+            df.ta.rsi(append=True)
+            df.ta.bbands(append=True)
+            df.dropna(inplace=True)
 
-        # Make prediction
-        features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
-        model_input_tensor = torch.FloatTensor(df[features].values).unsqueeze(0)
-        model_input_dict = {'volume': df[['volume']].values}
-        prediction = ai_engine.predict(model_input_tensor, model_input_dict)
+            # Make prediction
+            features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
+            model_input_tensor = torch.FloatTensor(df[features].values).unsqueeze(0)
+            model_input_dict = {'volume': df[['volume']].values}
+            prediction = ai_engine.predict(model_input_tensor, model_input_dict)
 
-        # Execute trade
-        if prediction['direction'] and not prediction['is_anomaly'][-1]:
-            if position != 'buy':
-                print("Buying...")
-                # exchange.create_order(config['data']['symbol'], 'market', 'buy', 1)
-                position = 'buy'
-        else:
-            if position != 'sell':
-                print("Selling...")
-                # exchange.create_order(config['data']['symbol'], 'market', 'sell', 1)
-                position = 'sell'
+            # Execute trade
+            if prediction['direction'] and not prediction['is_anomaly'][-1]:
+                if position != 'buy':
+                    logger.info("Buying...")
+                    # exchange.create_order(config['data']['symbol'], 'market', 'buy', 1)
+                    position = 'buy'
+            else:
+                if position != 'sell':
+                    logger.info("Selling...")
+                    # exchange.create_order(config['data']['symbol'], 'market', 'sell', 1)
+                    position = 'sell'
+        except Exception as e:
+            logger.error(f"An error occurred in the trading loop: {e}")
 
         time.sleep(60)
 
