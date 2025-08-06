@@ -34,3 +34,8 @@ exchange:
   name: 'binance'
   api_key: 'YOUR_API_KEY'
   secret_key: 'YOUR_SECRET_KEY'
+
+trading:
+  risk_percentage: 0.01
+  stop_loss_percentage: 0.02
+  take_profit_percentage: 0.04
