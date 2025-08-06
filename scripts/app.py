@@ -7,6 +7,12 @@ from scripts.training.train_sequential import train as train_sequential
 from scripts.backtest import backtest
 from scripts.inference.ai_engine import AIEngine
 from scripts.exchange import Exchange
+from prometheus_client import start_http_server, Gauge
+
+# Metrics
+BALANCE = Gauge('bot_balance', 'Current balance in USDT')
+TOTAL_PROFIT_LOSS = Gauge('bot_total_profit_loss', 'Total profit or loss in USDT')
+OPEN_POSITIONS = Gauge('bot_open_positions', 'Number of open positions')
 
 def main():
     st.title('Crypto Trading Bot')
@@ -58,8 +64,12 @@ def main():
         st.session_state.bot_running = True
         st.sidebar.success('Bot started!')
 
-        # Run the bot in a separate thread
+        # Start the metrics server in a separate thread
         from threading import Thread
+        metrics_thread = Thread(target=start_http_server, args=(8000,))
+        metrics_thread.start()
+
+        # Run the bot in a separate thread
         bot_thread = Thread(target=run_bot, args=(config,))
         bot_thread.start()
 
@@ -81,9 +91,16 @@ def run_bot(config):
     ai_engine = AIEngine(config)
     exchange = Exchange(config)
     position = None
+    initial_balance = exchange.get_balance('USDT')['free']
 
     while st.session_state.bot_running:
         try:
+            # Update metrics
+            balance = exchange.get_balance('USDT')
+            BALANCE.set(balance['free'])
+            TOTAL_PROFIT_LOSS.set(balance['free'] - initial_balance)
+            OPEN_POSITIONS.set(1 if position else 0)
+
             # Fetch data
             ohlcv = exchange.exchange.fetch_ohlcv(config['data']['symbol'], config['data']['timeframe'], limit=config['data']['lookback'])
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])

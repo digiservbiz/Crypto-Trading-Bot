@@ -8,3 +8,4 @@ pytorch-lightning
 pyyaml
 pandas-ta
 streamlit
+prometheus-client
