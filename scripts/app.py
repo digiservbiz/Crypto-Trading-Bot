@@ -7,6 +7,12 @@ from scripts.training.train_sequential import train as train_sequential
 from scripts.backtest import backtest
 from scripts.inference.ai_engine import AIEngine
 from scripts.exchange import Exchange
+from prometheus_client import start_http_server, Gauge
+
+# Metrics
+BALANCE = Gauge('bot_balance', 'Current balance in USDT')
+TOTAL_PROFIT_LOSS = Gauge('bot_total_profit_loss', 'Total profit or loss in USDT')
+OPEN_POSITIONS = Gauge('bot_open_positions', 'Number of open positions')
 
 def main():
     st.title('Crypto Trading Bot')
@@ -58,8 +64,12 @@ def main():
         st.session_state.bot_running = True
         st.sidebar.success('Bot started!')
 
-        # Run the bot in a separate thread
+        # Start the metrics server in a separate thread
         from threading import Thread
+        metrics_thread = Thread(target=start_http_server, args=(8000,))
+        metrics_thread.start()
+
+        # Run the bot in a separate thread
         bot_thread = Thread(target=run_bot, args=(config,))
         bot_thread.start()
 
@@ -73,39 +83,53 @@ def main():
         balance = exchange.get_balance('USDT')
         st.write(f"USDT Balance: {balance['free']:.2f}")
 
+from scripts.logger import get_logger
+
+logger = get_logger(__name__)
+
 def run_bot(config):
     ai_engine = AIEngine(config)
     exchange = Exchange(config)
     position = None
+    initial_balance = exchange.get_balance('USDT')['free']
 
     while st.session_state.bot_running:
-        # Fetch data
-        ohlcv = exchange.exchange.fetch_ohlcv(config['data']['symbol'], config['data']['timeframe'], limit=config['data']['lookback'])
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['returns'] = df['close'].pct_change()
-        df['volatility'] = df['returns'].rolling(20).std()
-        df.ta.macd(append=True)
-        df.ta.rsi(append=True)
-        df.ta.bbands(append=True)
-        df.dropna(inplace=True)
+        try:
+            # Update metrics
+            balance = exchange.get_balance('USDT')
+            BALANCE.set(balance['free'])
+            TOTAL_PROFIT_LOSS.set(balance['free'] - initial_balance)
+            OPEN_POSITIONS.set(1 if position else 0)
 
-        # Make prediction
-        features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
-        model_input_tensor = torch.FloatTensor(df[features].values).unsqueeze(0)
-        model_input_dict = {'volume': df[['volume']].values}
-        prediction = ai_engine.predict(model_input_tensor, model_input_dict)
+            # Fetch data
+            ohlcv = exchange.exchange.fetch_ohlcv(config['data']['symbol'], config['data']['timeframe'], limit=config['data']['lookback'])
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['returns'] = df['close'].pct_change()
+            df['volatility'] = df['returns'].rolling(20).std()
+            df.ta.macd(append=True)
+            df.ta.rsi(append=True)
+            df.ta.bbands(append=True)
+            df.dropna(inplace=True)
 
-        # Execute trade
-        if prediction['direction'] and not prediction['is_anomaly'][-1]:
-            if position != 'buy':
-                print("Buying...")
-                # exchange.create_order(config['data']['symbol'], 'market', 'buy', 1)
-                position = 'buy'
-        else:
-            if position != 'sell':
-                print("Selling...")
-                # exchange.create_order(config['data']['symbol'], 'market', 'sell', 1)
-                position = 'sell'
+            # Make prediction
+            features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
+            model_input_tensor = torch.FloatTensor(df[features].values).unsqueeze(0)
+            model_input_dict = {'volume': df[['volume']].values}
+            prediction = ai_engine.predict(model_input_tensor, model_input_dict)
+
+            # Execute trade
+            if prediction['direction'] and not prediction['is_anomaly'][-1]:
+                if position != 'buy':
+                    logger.info("Buying...")
+                    # exchange.create_order(config['data']['symbol'], 'market', 'buy', 1)
+                    position = 'buy'
+            else:
+                if position != 'sell':
+                    logger.info("Selling...")
+                    # exchange.create_order(config['data']['symbol'], 'market', 'sell', 1)
+                    position = 'sell'
+        except Exception as e:
+            logger.error(f"An error occurred in the trading loop: {e}")
 
         time.sleep(60)
 
