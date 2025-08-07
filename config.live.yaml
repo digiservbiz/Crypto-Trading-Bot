@@ -7,7 +7,7 @@ data:
   lookback: 60
 
 models:
-  model_type: 'lstm' # Can be 'lstm' or 'transformer'
+  model_type: 'transformer' # Can be 'lstm' or 'transformer'
   garch:
     p: 1
     q: 1
@@ -32,14 +32,10 @@ inference:
 
 exchange:
   name: 'binance'
-  api_key: 'YOUR_API_KEY'
-  secret_key: 'YOUR_SECRET_KEY'
+  api_key: 'YOUR_LIVE_API_KEY'
+  secret_key: 'YOUR_LIVE_SECRET_KEY'
 
 trading:
   risk_percentage: 0.01
   stop_loss_percentage: 0.02
   take_profit_percentage: 0.04
-
-telegram:
-  token: 'YOUR_TELEGRAM_BOT_TOKEN'
-  chat_id: 'YOUR_TELEGRAM_CHAT_ID'

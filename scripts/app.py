@@ -7,6 +7,7 @@ from scripts.training.train_sequential import train as train_sequential
 from scripts.backtest import backtest
 from scripts.inference.ai_engine import AIEngine
 from scripts.exchange import Exchange
+from scripts.notifier import Notifier
 from prometheus_client import start_http_server, Gauge
 
 # Metrics
@@ -90,6 +91,7 @@ logger = get_logger(__name__)
 def run_bot(config):
     ai_engine = AIEngine(config)
     exchange = Exchange(config)
+    notifier = Notifier(config)
     position = None
     initial_balance = exchange.get_balance('USDT')['free']
     entry_price = 0
@@ -124,11 +126,13 @@ def run_bot(config):
                 if position == 'buy':
                     if pnl < -config['trading']['stop_loss_percentage'] or pnl > config['trading']['take_profit_percentage']:
                         logger.info(f"Closing position with PnL: {pnl:.2f}")
+                        notifier.send_message(f"Closing position with PnL: {pnl:.2f}")
                         # exchange.create_order(config['data']['symbol'], 'market', 'sell', trade_amount)
                         position = None
                 elif position == 'sell':
                     if pnl > config['trading']['stop_loss_percentage'] or pnl < -config['trading']['take_profit_percentage']:
                         logger.info(f"Closing position with PnL: {pnl:.2f}")
+                        notifier.send_message(f"Closing position with PnL: {pnl:.2f}")
                         # exchange.create_order(config['data']['symbol'], 'market', 'buy', trade_amount)
                         position = None
 
@@ -139,16 +143,19 @@ def run_bot(config):
             if not position:
                 if prediction['direction'] and not prediction['is_anomaly'][-1]:
                     logger.info(f"Buying {trade_amount} of {config['data']['symbol']}...")
+                    notifier.send_message(f"Buying {trade_amount} of {config['data']['symbol']}...")
                     # exchange.create_order(config['data']['symbol'], 'market', 'buy', trade_amount)
                     position = 'buy'
                     entry_price = df['close'].iloc[-1]
                 else:
                     logger.info(f"Selling {trade_amount} of {config['data']['symbol']}...")
+                    notifier.send_message(f"Selling {trade_amount} of {config['data']['symbol']}...")
                     # exchange.create_order(config['data']['symbol'], 'market', 'sell', trade_amount)
                     position = 'sell'
                     entry_price = df['close'].iloc[-1]
         except Exception as e:
             logger.error(f"An error occurred in the trading loop: {e}")
+            notifier.send_message(f"An error occurred in the trading loop: {e}")
 
         time.sleep(60)
 
