@@ -8,19 +8,13 @@ class AIEngine:
         self.config = config
         self.models_dir = config['inference']['models_dir']
         self.sequential_models = {}
-        # GARCH and Anomaly models are assumed to be more general or need a different multi-symbol strategy
         self.garch = joblib.load(f'{self.models_dir}/garch/model.joblib')
         self.anomaly = joblib.load(f'{self.models_dir}/anomaly/model.joblib')
     
-    def _load_sequential_model(self, symbol):
-        # Construct a path for the symbol-specific model
-        model_path = f"{self.models_dir}/{self.config['models']['model_type']}/{symbol.replace('/', '_')}_model.ckpt"
-        
-        # This part assumes that you have a way to get the features for a symbol,
-        # potentially by running a part of the CryptoDataModule logic for that symbol.
-        # For now, we'll keep it simple, but this might need adjustment.
-        dm = CryptoDataModule(self.config) # This may need to be adapted for multiple symbols
-        dm.prepare_data() # This loads data for all symbols, which is inefficient but works for now
+    def _load_sequential_model(self, symbol, volatility_type):
+        model_path = f"{self.models_dir}/{self.config['models']['model_type']}/{symbol.replace('/', '_')}_{volatility_type}_model.ckpt"
+        dm = CryptoDataModule(self.config)
+        dm.prepare_data()
 
         model = LitSequential.load_from_checkpoint(
             model_path,
@@ -31,17 +25,24 @@ class AIEngine:
         return model
     
     def predict(self, data_tensor, data_dict, symbol):
-        # Load model on demand
-        if symbol not in self.sequential_models:
-            self.sequential_models[symbol] = self._load_sequential_model(symbol)
+        volatility = data_dict['volatility'][-1]
         
-        sequential_model = self.sequential_models[symbol]
+        if self.config['models']['model_selection']['enabled']:
+            volatility_type = 'high_volatility' if volatility > self.config['models']['model_selection']['volatility_threshold'] else 'low_volatility'
+        else:
+            volatility_type = 'model'
+
+        if symbol not in self.sequential_models or volatility_type not in self.sequential_models[symbol]:
+            if symbol not in self.sequential_models:
+                self.sequential_models[symbol] = {}
+            self.sequential_models[symbol][volatility_type] = self._load_sequential_model(symbol, volatility_type)
+        
+        sequential_model = self.sequential_models[symbol][volatility_type]
         sequential_out = sequential_model(data_tensor)
         
-        vol = self.garch.forecast(horizon=1).variance.iloc[-1]
         is_anomaly = self.anomaly.predict(data_dict['volume'])
         return {
             'direction': sequential_out > 0.5,
-            'volatility': vol,
+            'volatility': volatility,
             'is_anomaly': is_anomaly == -1
         }

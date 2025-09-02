@@ -10,6 +10,7 @@ from prometheus_client import Gauge
 from scripts.logger import get_logger
 from flair.models import TextClassifier
 from flair.data import Sentence
+from datetime import datetime, timezone
 
 logger = get_logger(__name__)
 
@@ -27,7 +28,7 @@ def get_news(symbol):
     url = f"https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories={symbol}"
     response = requests.get(url)
     news_data = response.json()['Data']
-    return [article['body'] for article in news_data]
+    return news_data
 
 def get_sentiment(text):
     """Analyzes the sentiment of a given text."""
@@ -72,14 +73,23 @@ def run_bot(config):
                     df.dropna(inplace=True)
 
                     # Get sentiment
-                    news = get_news(symbol.split('/')[0])
-                    sentiment = sum(get_sentiment(article) for article in news) / len(news) if news else 0
+                    sentiment = 0
+                    if config['sentiment_analysis']['enabled']:
+                        news = get_news(symbol.split('/')[0])
+                        weighted_sentiments = []
+                        for article in news:
+                            age_hours = (datetime.now(timezone.utc) - datetime.fromtimestamp(article['published_on'], tz=timezone.utc)).total_seconds() / 3600
+                            time_decay = config['sentiment_analysis']['time_decay_factor'] ** age_hours
+                            source_weight = config['sentiment_analysis']['source_weights'].get(article['source'], 0.5)
+                            sentiment_score = get_sentiment(article['body'])
+                            weighted_sentiments.append(sentiment_score * time_decay * source_weight)
+                        if weighted_sentiments:
+                            sentiment = sum(weighted_sentiments) / len(weighted_sentiments)
 
                     # Make prediction for the current symbol
                     features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0', 'ATRr_14', 'OBV']
                     model_input_tensor = torch.FloatTensor(df[features].values).unsqueeze(0)
-                    model_input_dict = {'volume': df[['volume']].values}
-                    # Pass the symbol to the predict function
+                    model_input_dict = {'volume': df[['volume']].values, 'volatility': df['volatility'].values}
                     prediction = ai_engine.predict(model_input_tensor, model_input_dict, symbol)
 
                     # Manage position for the current symbol
@@ -97,7 +107,6 @@ def run_bot(config):
                             if df['close'].iloc[-1] < trailing_stop_price or pnl > take_profit_percentage:
                                 logger.info(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
                                 notifier.send_message(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
-                                # exchange.create_order(symbol, 'market', 'sell', trade_amount)
                                 TRADES.labels(symbol, 'sell', df['close'].iloc[-1], trade_amount).set(1)
                                 positions[symbol] = None
                         elif positions[symbol] == 'sell':
@@ -106,7 +115,6 @@ def run_bot(config):
                             if df['close'].iloc[-1] > trailing_stop_price or pnl < -take_profit_percentage:
                                 logger.info(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
                                 notifier.send_message(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
-                                # exchange.create_order(symbol, 'market', 'buy', trade_amount)
                                 TRADES.labels(symbol, 'buy', df['close'].iloc[-1], trade_amount).set(1)
                                 positions[symbol] = None
 
@@ -121,7 +129,6 @@ def run_bot(config):
                         if prediction['direction'] and not prediction['is_anomaly'][-1] and sentiment > 0.5:
                             logger.info(f"[{symbol}] Buying {trade_amount} of {symbol}...")
                             notifier.send_message(f"[{symbol}] Buying {trade_amount} of {symbol}...")
-                            # exchange.create_order(symbol, 'market', 'buy', trade_amount)
                             TRADES.labels(symbol, 'buy', df['close'].iloc[-1], trade_amount).set(1)
                             positions[symbol] = 'buy'
                             entry_prices[symbol] = df['close'].iloc[-1]
@@ -129,7 +136,6 @@ def run_bot(config):
                         elif not prediction['direction'] and not prediction['is_anomaly'][-1] and sentiment < -0.5:
                             logger.info(f"[{symbol}] Selling {trade_amount} of {symbol}...")
                             notifier.send_message(f"[{symbol}] Selling {trade_amount} of {symbol}...")
-                            # exchange.create_order(symbol, 'market', 'sell', trade_amount)
                             TRADES.labels(symbol, 'sell', df['close'].iloc[-1], trade_amount).set(1)
                             positions[symbol] = 'sell'
                             entry_prices[symbol] = df['close'].iloc[-1]
@@ -139,7 +145,6 @@ def run_bot(config):
                     logger.error(f"An error occurred in the trading loop for {symbol}: {e}")
                     notifier.send_message(f"An error occurred in the trading loop for {symbol}: {e}")
             
-            # Wait before the next cycle
             time.sleep(60)
 
         except Exception as e:
