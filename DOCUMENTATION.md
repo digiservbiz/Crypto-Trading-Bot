@@ -11,6 +11,10 @@ This document provides a comprehensive guide to the Crypto Trading Bot, a projec
 *   **Customizable Configuration:** You can easily configure the bot to suit your trading preferences and risk tolerance.
 *   **Real-Time Monitoring:** The bot provides real-time monitoring of your portfolio and trading performance.
 *   **Extensible Architecture:** The project is designed to be easily extensible, allowing you to add new features and trading strategies.
+*   **Dynamic Position Sizing:** The bot can adjust its trade sizes based on market volatility, using larger positions in less volatile conditions and smaller positions when the market is choppy.
+*   **Adaptive Model Selection:** The bot can switch between different machine learning models that are optimized for specific market conditions, such as high or low volatility.
+*   **Advanced Sentiment Analysis:** The bot's sentiment analysis capabilities have been upgraded to incorporate a time-decay factor and source-based weighting, allowing it to prioritize more recent news from more reliable sources.
+
 
 ### 1.2. Technology Stack
 
@@ -156,39 +160,62 @@ Once the model is trained, it can be used to make predictions on new data. In li
 
 The `config.yaml` file is the main configuration file for the bot. It is divided into several sections, which are explained below:
 
-### 6.1. `app_config`
+### 6.1. `data`
 
-*   **`trade_interval_minutes`:** The interval, in minutes, at which the bot will execute trades.
-*   **`allow_mock_orders`:** If set to `true`, the bot will simulate trades instead of executing them on a real exchange. This is useful for testing the bot without risking real money.
-*   **`backtesting_enabled`:** If set to `true`, the bot will run a backtest on startup.
-*   **`train_model_enabled`:** If set to `true`, the bot will train the AI model on startup.
-*   **`start_bot_enabled`:** If set to `true`, the bot will start live trading on startup.
+*   **`sample_data_path`:** The path to the sample data file.
+*   **`symbols`:** A list of the cryptocurrency symbols to trade.
+*   **`timeframe`:** The timeframe to use for the OHLCV data.
+*   **`lookback`:** The number of historical data points to use as input to the model.
 
-### 6.2. `exchange_config`
+### 6.2. `models`
 
-*   **`exchange`:** The name of the exchange to use. The bot currently supports `binance` and `coinbase`.
-*   **`api_key`:** Your API key for the exchange.
-*   **`api_secret`:** Your API secret for the exchange.
-*   **`api_passphrase`:** Your API passphrase for the exchange (only required for some exchanges).
-*   **`symbol`:** The trading symbol to use, in the format `BASE/QUOTE` (e.g., `BTC/USDT`).
+*   **`model_type`:** The type of sequential model to use. Can be `lstm` or `transformer`.
+*   **`model_selection`:** Configuration for the model selection feature.
+    *   **`enabled`:** Whether to enable the model selection feature.
+    *   **`volatility_threshold`:** The volatility threshold to use for switching between models.
+*   **`garch`:** Configuration for the GARCH model.
+*   **`anomaly`:** Configuration for the anomaly detection model.
+*   **`lstm`:** Configuration for the LSTM model.
+*   **`transformer`:** Configuration for the Transformer model.
 
-### 6.3. `ai_config`
+### 6.3. `training`
 
-*   **`model_name`:** The name of the AI model to use. The bot currently supports `lstm` and `transformer`.
-*   **`input_features`:** A list of the features to use as input to the model. The available features are `open`, `high`, `low`, `close`, and `volume`.
-*   **`output_feature`:** The feature that the model should predict. This should be one of the features in the `input_features` list.
-*   **`sequence_length`:** The number of historical data points to use as input to the model.
 *   **`batch_size`:** The number of samples to use in each training batch.
-*   **`num_epochs`:** The number of times to iterate over the entire training dataset.
+*   **`max_epochs`:** The number of times to iterate over the entire training dataset.
 
-### 6.4. `prometheus_config`
+### 6.4. `inference`
 
-*   **`enabled`:** If set to `true`, the bot will expose a Prometheus metrics endpoint.
-*   **`port`:** The port on which to expose the Prometheus metrics endpoint.
+*   **`models_dir`:** The directory where the trained models are stored.
 
-### 6.5. `telegram_config`
+### 6.5. `exchange`
 
-*   **`enabled`:** If set to `true`, the bot will send notifications to a Telegram bot.
+*   **`name`:** The name of the exchange to use.
+*   **`api_key`:** Your API key for the exchange.
+*   **`secret_key`:** Your API secret for the exchange.
+
+### 6.6. `trading`
+
+*   **`risk_percentage`:** The percentage of your account balance to risk on each trade.
+*   **`stop_loss_percentage`:** The percentage at which to set the stop loss.
+*   **`take_profit_percentage`:** The percentage at which to set the take profit.
+*   **`trailing_stop`:** Configuration for the trailing stop feature.
+    *   **`enabled`:** Whether to enable the trailing stop feature.
+    *   **`percentage`:** The percentage at which to set the trailing stop.
+*   **`dynamic_take_profit`:** Configuration for the dynamic take profit feature.
+    *   **`enabled`:** Whether to enable the dynamic take profit feature.
+    *   **`volatility_multiplier`:** The volatility multiplier to use for calculating the dynamic take profit.
+*   **`dynamic_position_sizing`:** Configuration for the dynamic position sizing feature.
+    *   **`enabled`:** Whether to enable the dynamic position sizing feature.
+    *   **`volatility_divisor`:** The volatility divisor to use for calculating the dynamic position size.
+
+### 6.7. `sentiment_analysis`
+
+*   **`enabled`:** Whether to enable the sentiment analysis feature.
+*   **`time_decay_factor`:** The time decay factor to use for weighting the sentiment of news articles.
+*   **`source_weights`:** A dictionary of weights to use for different news sources.
+
+### 6.8. `telegram`
+
 *   **`token`:** Your Telegram bot token.
 *   **`chat_id`:** The ID of the chat to which the bot should send notifications.
 
