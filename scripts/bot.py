@@ -112,6 +112,9 @@ def run_bot(config):
 
                     # Calculate position size
                     trade_amount = (balance['free'] * config['trading']['risk_percentage']) / df['close'].iloc[-1]
+                    if config['trading']['dynamic_position_sizing']['enabled']:
+                        volatility = df['volatility'].iloc[-1]
+                        trade_amount /= (volatility * config['trading']['dynamic_position_sizing']['volatility_divisor'])
 
                     # Execute trade for the current symbol
                     if not positions[symbol]:
