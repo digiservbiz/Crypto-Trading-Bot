@@ -67,6 +67,8 @@ def run_bot(config):
                     df.ta.macd(append=True)
                     df.ta.rsi(append=True)
                     df.ta.bbands(append=True)
+                    df.ta.atr(append=True)
+                    df.ta.obv(append=True)
                     df.dropna(inplace=True)
 
                     # Get sentiment
@@ -74,7 +76,7 @@ def run_bot(config):
                     sentiment = sum(get_sentiment(article) for article in news) / len(news) if news else 0
 
                     # Make prediction for the current symbol
-                    features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
+                    features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0', 'ATRr_14', 'OBV']
                     model_input_tensor = torch.FloatTensor(df[features].values).unsqueeze(0)
                     model_input_dict = {'volume': df[['volume']].values}
                     # Pass the symbol to the predict function
