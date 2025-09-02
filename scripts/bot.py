@@ -44,6 +44,7 @@ def run_bot(config):
     symbols = config['data']['symbols']
     positions = {symbol: None for symbol in symbols}
     entry_prices = {symbol: 0 for symbol in symbols}
+    highest_prices = {symbol: 0 for symbol in symbols}
     
     initial_balance = exchange.get_balance('USDT')['free']
 
@@ -83,16 +84,20 @@ def run_bot(config):
                     if positions[symbol]:
                         pnl = (df['close'].iloc[-1] - entry_prices[symbol]) / entry_prices[symbol]
                         if positions[symbol] == 'buy':
-                            if pnl < -config['trading']['stop_loss_percentage'] or pnl > config['trading']['take_profit_percentage']:
-                                logger.info(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
-                                notifier.send_message(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
+                            highest_prices[symbol] = max(highest_prices[symbol], df['close'].iloc[-1])
+                            trailing_stop_price = highest_prices[symbol] * (1 - config['trading']['trailing_stop']['percentage'])
+                            if df['close'].iloc[-1] < trailing_stop_price:
+                                logger.info(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
+                                notifier.send_message(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
                                 # exchange.create_order(symbol, 'market', 'sell', trade_amount)
                                 TRADES.labels(symbol, 'sell', df['close'].iloc[-1], trade_amount).set(1)
                                 positions[symbol] = None
                         elif positions[symbol] == 'sell':
-                            if pnl > config['trading']['stop_loss_percentage'] or pnl < -config['trading']['take_profit_percentage']:
-                                logger.info(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
-                                notifier.send_message(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
+                            highest_prices[symbol] = min(highest_prices[symbol], df['close'].iloc[-1])
+                            trailing_stop_price = highest_prices[symbol] * (1 + config['trading']['trailing_stop']['percentage'])
+                            if df['close'].iloc[-1] > trailing_stop_price:
+                                logger.info(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
+                                notifier.send_message(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
                                 # exchange.create_order(symbol, 'market', 'buy', trade_amount)
                                 TRADES.labels(symbol, 'buy', df['close'].iloc[-1], trade_amount).set(1)
                                 positions[symbol] = None
@@ -109,6 +114,7 @@ def run_bot(config):
                             TRADES.labels(symbol, 'buy', df['close'].iloc[-1], trade_amount).set(1)
                             positions[symbol] = 'buy'
                             entry_prices[symbol] = df['close'].iloc[-1]
+                            highest_prices[symbol] = df['close'].iloc[-1]
                         elif not prediction['direction'] and not prediction['is_anomaly'][-1] and sentiment < -0.5:
                             logger.info(f"[{symbol}] Selling {trade_amount} of {symbol}...")
                             notifier.send_message(f"[{symbol}] Selling {trade_amount} of {symbol}...")
@@ -116,6 +122,7 @@ def run_bot(config):
                             TRADES.labels(symbol, 'sell', df['close'].iloc[-1], trade_amount).set(1)
                             positions[symbol] = 'sell'
                             entry_prices[symbol] = df['close'].iloc[-1]
+                            highest_prices[symbol] = df['close'].iloc[-1]
 
                 except Exception as e:
                     logger.error(f"An error occurred in the trading loop for {symbol}: {e}")

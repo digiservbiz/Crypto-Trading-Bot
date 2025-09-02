@@ -39,6 +39,9 @@ trading:
   risk_percentage: 0.01
   stop_loss_percentage: 0.02
   take_profit_percentage: 0.04
+  trailing_stop:
+    enabled: true
+    percentage: 0.01
 
 telegram:
   token: 'YOUR_TELEGRAM_BOT_TOKEN'
