@@ -2,7 +2,7 @@
 
 data:
   sample_data_path: data/sample_ohlcv.csv
-  symbol: 'BTC/USDT'
+  symbols: ['BTC/USDT', 'ETH/USDT']
   timeframe: '5m'
   lookback: 60
 

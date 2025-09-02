@@ -7,18 +7,25 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 import pandas as pd
 import numpy as np
 import pandas_ta as ta
-
 import yaml
+import os
 
 # 1. Lightning Data Module
 class CryptoDataModule(pl.LightningDataModule):
-    def __init__(self, config):
+    def __init__(self, config, symbol):
         super().__init__()
         self.config = config
+        self.symbol = symbol
 
     def prepare_data(self):
-        # Load data from csv
-        df = pd.read_csv(self.config['data']['sample_data_path'])
+        # In a real-world scenario, you would have separate data files for each symbol.
+        # For example: f"data/{self.symbol.replace('/','_')}.csv"
+        # For now, we use the single sample data file for demonstration.
+        data_path = self.config['data']['sample_data_path']
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f"Data file not found at {data_path}. Please ensure you have data for training.")
+
+        df = pd.read_csv(data_path)
 
         # Feature engineering
         df['returns'] = df['close'].pct_change()
@@ -39,11 +46,11 @@ class CryptoDataModule(pl.LightningDataModule):
         self.y = torch.FloatTensor(np.array(y))
 
     def train_dataloader(self):
-        dataset = TensorDataset(self.X[:4000], self.y[:4000])  # First 4000 for training
+        dataset = TensorDataset(self.X[:4000], self.y[:4000])
         return DataLoader(dataset, batch_size=self.config['training']['batch_size'], shuffle=True, num_workers=4, pin_memory=True)
 
     def val_dataloader(self):
-        dataset = TensorDataset(self.X[4000:], self.y[4000:])  # Last 1000 for validation
+        dataset = TensorDataset(self.X[4000:], self.y[4000:])
         return DataLoader(dataset, batch_size=self.config['training']['batch_size'], num_workers=4, pin_memory=True)
 
 from models import LSTMModel, TransformerModel
@@ -54,23 +61,13 @@ class LitSequential(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        if config['models']['model_type'] == 'lstm':
-            self.model = LSTMModel(
-                input_size=input_size,
-                hidden_size=config['models']['lstm']['hidden_size'],
-                num_layers=config['models']['lstm']['num_layers']
-            )
-        elif config['models']['model_type'] == 'transformer':
-            self.model = TransformerModel(
-                input_size=input_size,
-                d_model=config['models']['transformer']['d_model'],
-                nhead=config['models']['transformer']['nhead'],
-                num_encoder_layers=config['models']['transformer']['num_encoder_layers'],
-                dim_feedforward=config['models']['transformer']['dim_feedforward'],
-                dropout=config['models']['transformer']['dropout']
-            )
+        model_type = config['models']['model_type']
+        if model_type == 'lstm':
+            self.model = LSTMModel(input_size=input_size, **config['models']['lstm'])
+        elif model_type == 'transformer':
+            self.model = TransformerModel(input_size=input_size, **config['models']['transformer'])
         else:
-            raise ValueError(f"Unknown model type: {config['models']['model_type']}")
+            raise ValueError(f"Unknown model type: {model_type}")
         self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, x):
@@ -93,42 +90,42 @@ class LitSequential(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=1e-3)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3)
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "monitor": "train_loss",
-                "interval": "epoch"
-            }
-        }
+        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "monitor": "train_loss"}}
 
-# 3. Training Function with Multi-GPU Support
+# 3. Training Function for Multi-Pair Trading
 def train(config):
-    # Setup
-    dm = CryptoDataModule(config)
-    dm.prepare_data()
-    model = LitSequential(config, input_size=len(dm.features))
+    symbols = config['data']['symbols']
+    model_type = config['models']['model_type']
+    
+    for symbol in symbols:
+        print(f"--- Starting training for {symbol} ---")
+        
+        # Setup
+        dm = CryptoDataModule(config, symbol)
+        dm.prepare_data()
+        model = LitSequential(config, input_size=len(dm.features))
 
-    # Callbacks
-    checkpoint_cb = ModelCheckpoint(
-        dirpath=f"models/{config['models']['model_type']}",
-        filename='model',
-        save_top_k=1,
-        monitor='train_loss'
-    )
-    early_stop_cb = EarlyStopping(monitor='train_loss', patience=10)
+        # Callbacks
+        checkpoint_cb = ModelCheckpoint(
+            dirpath=f"models/{model_type}",
+            filename=f"{symbol.replace('/', '_')}_model",
+            save_top_k=1,
+            monitor='train_loss'
+        )
+        early_stop_cb = EarlyStopping(monitor='train_loss', patience=10)
 
-    # Trainer
-    trainer = pl.Trainer(
-        max_epochs=config['training']['max_epochs'],
-        callbacks=[checkpoint_cb, early_stop_cb],
-        log_every_n_steps=5,
-        enable_progress_bar=True,
-        precision=32
-    )
+        # Trainer
+        trainer = pl.Trainer(
+            max_epochs=config['training']['max_epochs'],
+            callbacks=[checkpoint_cb, early_stop_cb],
+            log_every_n_steps=5,
+            enable_progress_bar=True,
+            precision=32
+        )
 
-    # Train
-    trainer.fit(model, dm)
+        # Train
+        trainer.fit(model, dm)
+        print(f"--- Finished training for {symbol} ---")
 
 if __name__ == "__main__":
     with open('config.yaml', 'r') as f:

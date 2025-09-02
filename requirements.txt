@@ -11,3 +11,5 @@ streamlit
 prometheus-client
 python-telegram-bot
 pytest
+flair
+requests
