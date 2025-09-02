@@ -42,6 +42,9 @@ trading:
   trailing_stop:
     enabled: true
     percentage: 0.01
+  dynamic_take_profit:
+    enabled: true
+    volatility_multiplier: 2
 
 telegram:
   token: 'YOUR_TELEGRAM_BOT_TOKEN'

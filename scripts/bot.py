@@ -83,21 +83,27 @@ def run_bot(config):
                     # Manage position for the current symbol
                     if positions[symbol]:
                         pnl = (df['close'].iloc[-1] - entry_prices[symbol]) / entry_prices[symbol]
+                        
+                        take_profit_percentage = config['trading']['take_profit_percentage']
+                        if config['trading']['dynamic_take_profit']['enabled']:
+                            volatility = df['volatility'].iloc[-1]
+                            take_profit_percentage = volatility * config['trading']['dynamic_take_profit']['volatility_multiplier']
+                        
                         if positions[symbol] == 'buy':
                             highest_prices[symbol] = max(highest_prices[symbol], df['close'].iloc[-1])
                             trailing_stop_price = highest_prices[symbol] * (1 - config['trading']['trailing_stop']['percentage'])
-                            if df['close'].iloc[-1] < trailing_stop_price:
-                                logger.info(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
-                                notifier.send_message(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
+                            if df['close'].iloc[-1] < trailing_stop_price or pnl > take_profit_percentage:
+                                logger.info(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
+                                notifier.send_message(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
                                 # exchange.create_order(symbol, 'market', 'sell', trade_amount)
                                 TRADES.labels(symbol, 'sell', df['close'].iloc[-1], trade_amount).set(1)
                                 positions[symbol] = None
                         elif positions[symbol] == 'sell':
                             highest_prices[symbol] = min(highest_prices[symbol], df['close'].iloc[-1])
                             trailing_stop_price = highest_prices[symbol] * (1 + config['trading']['trailing_stop']['percentage'])
-                            if df['close'].iloc[-1] > trailing_stop_price:
-                                logger.info(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
-                                notifier.send_message(f"[{symbol}] Trailing stop triggered. Closing position with PnL: {pnl:.2f}")
+                            if df['close'].iloc[-1] > trailing_stop_price or pnl < -take_profit_percentage:
+                                logger.info(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
+                                notifier.send_message(f"[{symbol}] Closing position with PnL: {pnl:.2f}")
                                 # exchange.create_order(symbol, 'market', 'buy', trade_amount)
                                 TRADES.labels(symbol, 'buy', df['close'].iloc[-1], trade_amount).set(1)
                                 positions[symbol] = None
