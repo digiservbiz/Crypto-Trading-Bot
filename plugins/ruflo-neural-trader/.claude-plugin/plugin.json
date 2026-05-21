@@ -1,0 +1,9 @@
+{
+  "name": "ruflo-neural-trader",
+  "version": "0.2.0",
+  "description": "Neural trading for crypto — self-learning LSTM/Transformer/N-BEATS strategies, Rust-accelerated backtesting, 4 specialized agents, 7 skills, and multi-agent swarm coordination",
+  "author": "ruvnet",
+  "license": "MIT",
+  "repository": "https://github.com/ruvnet/ruflo",
+  "keywords": ["ruflo", "neural-trader", "crypto", "lstm", "transformer", "backtest", "risk", "portfolio", "swarm", "mcp"]
+}

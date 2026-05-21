@@ -24,3 +24,8 @@
 .env
 *.key
 *.secret
+data/memory/*.json
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

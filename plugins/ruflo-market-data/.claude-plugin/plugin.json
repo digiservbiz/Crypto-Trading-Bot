@@ -1,0 +1,8 @@
+{
+  "name": "ruflo-market-data",
+  "version": "0.2.0",
+  "description": "Crypto market data pipeline — REST/WebSocket feed ingestion, OHLCV normalization, candlestick pattern vectorization, HNSW-indexed pattern matching",
+  "author": "ruvnet",
+  "license": "MIT",
+  "keywords": ["ruflo", "market-data", "ohlcv", "candlestick", "patterns", "hnsw", "vectorization"]
+}

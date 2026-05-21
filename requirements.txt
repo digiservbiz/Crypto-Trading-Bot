@@ -1,8 +1,8 @@
 ccxt
 pandas
 numpy
-scikit-learn
-arch
+scikit-learn>=1.3.0
+arch>=6.2.0
 joblib
 pytorch-lightning
 pyyaml
@@ -13,3 +13,5 @@ python-telegram-bot
 pytest
 flair
 requests
+scipy>=1.11.0
+statsmodels>=0.14.0
