@@ -1,8 +1,9 @@
 import streamlit as st
 import yaml
 from scripts.training.train_sequential import train as train_sequential
-from scripts.backtest import backtest
+from scripts.backtest import legacy_backtest
 from scripts.bot import run_bot
+from scripts.exchange import Exchange
 from prometheus_client import start_http_server
 from threading import Thread
 
@@ -27,7 +28,7 @@ def main():
     st.sidebar.title('Backtesting')
     if st.sidebar.button('Run Backtest'):
         with st.spinner('Running backtest...'):
-            backtest_results = backtest(config)
+            backtest_results = legacy_backtest(config)
             st.session_state.backtest_results = backtest_results
         st.sidebar.success('Backtest complete!')
 

@@ -79,8 +79,29 @@ def get_news(symbol: str) -> list:
         return []
 
 
+# Module-level Flair classifier singleton — loaded once, reused across all calls
+_flair_classifier: Any = None
+
+
+def _get_flair_classifier() -> Any:
+    """Lazily load the Flair sentiment classifier exactly once (singleton).
+
+    Loading TextClassifier from disk takes 5-10s. Calling it inside a loop
+    every 60 seconds would cause unacceptable latency.
+    """
+    global _flair_classifier
+    if _flair_classifier is None:
+        try:
+            from flair.models import TextClassifier
+            _flair_classifier = TextClassifier.load("en-sentiment")
+            logger.info("Flair sentiment classifier loaded")
+        except Exception as exc:
+            logger.warning("Flair classifier unavailable: %s — sentiment disabled", exc)
+    return _flair_classifier
+
+
 def get_sentiment(text: str) -> float:
-    """Analyze sentiment of text using the flair library.
+    """Analyze sentiment of text using the flair library (singleton classifier).
 
     Args:
         text: News article body or title.
@@ -88,10 +109,11 @@ def get_sentiment(text: str) -> float:
     Returns:
         Sentiment score in [-1.0, +1.0]. Positive = bullish, negative = bearish.
     """
+    classifier = _get_flair_classifier()
+    if classifier is None:
+        return 0.0
     try:
-        from flair.models import TextClassifier
         from flair.data import Sentence
-        classifier = TextClassifier.load("en-sentiment")
         sentence = Sentence(text[:512])  # Limit length
         classifier.predict(sentence)
         score = sentence.labels[0].score
@@ -237,6 +259,9 @@ def execute_trade(
         return None
 
     trade_amount = (balance * risk_decision.adjusted_size_pct) / current_price
+    if trade_amount <= 0:
+        logger.warning("Computed trade_amount is zero or negative — skipping")
+        return None
 
     msg = (
         f"[{symbol}] {side.upper()} {trade_amount:.6f} @ {current_price:.2f} | "
@@ -248,17 +273,85 @@ def execute_trade(
     if dry_run:
         logger.info("[DRY RUN] %s", msg)
         notifier.send_message(f"[DRY RUN] {msg}")
+        TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(trade_amount, 6))).set(1)
         return trade_amount
 
     try:
-        logger.info("Executing trade: %s", msg)
-        notifier.send_message(msg)
-        TRADES.labels(symbol, side, current_price, trade_amount).set(1)
+        logger.info("Placing order: %s", msg)
+        order = exchange.create_order(symbol, "market", side, trade_amount)
+        if order is None:
+            logger.error("[%s] Exchange returned None for order — may not have executed", symbol)
+            notifier.send_message(f"[WARNING] Order may not have executed for {symbol}: exchange returned None")
+            return None
+        order_id = order.get("id", "unknown")
+        order_status = order.get("status", "unknown")
+        logger.info("[%s] Order placed: id=%s status=%s", symbol, order_id, order_status)
+        notifier.send_message(
+            f"{msg} | order_id={order_id} status={order_status}"
+        )
+        TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(trade_amount, 6))).set(1)
         return trade_amount
     except Exception as exc:
-        logger.error("Trade execution failed: %s", exc)
+        logger.error("Trade execution failed for %s: %s", symbol, exc)
         notifier.send_message(f"[ERROR] Trade execution failed for {symbol}: {exc}")
         return None
+
+
+def close_position_order(
+    exchange: Exchange,
+    notifier: Notifier,
+    symbol: str,
+    side: str,
+    amount: float,
+    current_price: float,
+    pnl: float,
+    dry_run: bool = False,
+) -> bool:
+    """Execute a position-closing order on the exchange.
+
+    This is called when trailing stop or take-profit triggers. It places the
+    opposing order to close the existing position.
+
+    Args:
+        exchange: Exchange wrapper.
+        notifier: Telegram notifier.
+        symbol: Trading pair.
+        side: "sell" to close a long, "buy" to close a short.
+        amount: Number of units to close.
+        current_price: Current market price.
+        pnl: Realized PnL percentage for logging.
+        dry_run: If True, log but don't send real orders.
+
+    Returns:
+        True if close order was placed successfully (or dry run), False on error.
+    """
+    msg = (
+        f"[{symbol}] CLOSE {side.upper()} {amount:.6f} @ {current_price:.2f} | "
+        f"PnL={pnl*100:.2f}%"
+    )
+
+    if dry_run:
+        logger.info("[DRY RUN] %s", msg)
+        notifier.send_message(f"[DRY RUN] {msg}")
+        return True
+
+    if amount <= 0:
+        logger.warning("[%s] Close order amount is zero — skipping", symbol)
+        return False
+
+    try:
+        order = exchange.create_order(symbol, "market", side, amount)
+        if order is None:
+            logger.error("[%s] Close order returned None — position may still be open", symbol)
+            notifier.send_message(f"[WARNING] Close order may not have executed for {symbol}")
+            return False
+        logger.info("[%s] Close order placed: id=%s status=%s", symbol, order.get("id"), order.get("status"))
+        notifier.send_message(msg)
+        return True
+    except Exception as exc:
+        logger.error("[%s] Close order failed: %s", symbol, exc)
+        notifier.send_message(f"[ERROR] Close order failed for {symbol}: {exc}")
+        return False
 
 
 def run_bot(config: Dict[str, Any]) -> None:
@@ -303,6 +396,12 @@ def run_bot(config: Dict[str, Any]) -> None:
     start_of_day_balance = initial_balance
     start_of_week_balance = initial_balance
     portfolio_peak = initial_balance
+    # Daily and weekly balance reset tracking (for circuit breaker accuracy)
+    last_reset_day = datetime.now(timezone.utc).date()
+    last_reset_week = datetime.now(timezone.utc).isocalendar()[:2]  # (year, week_num)
+
+    # Per-symbol close price cache for pairwise correlation computation
+    symbol_close_cache: Dict[str, list] = {s: [] for s in symbols}
     open_positions_meta: Dict[str, Any] = {}
 
     logger.info(
@@ -325,6 +424,19 @@ def run_bot(config: Dict[str, Any]) -> None:
             OPEN_POSITIONS.set(sum(1 for p in positions.values() if p is not None))
             PIPELINE_CYCLES.inc()
 
+            # ---- Daily/Weekly balance reset for circuit breaker accuracy ----
+            now_utc = datetime.now(timezone.utc)
+            today = now_utc.date()
+            this_week = now_utc.isocalendar()[:2]
+            if today != last_reset_day:
+                start_of_day_balance = current_balance
+                last_reset_day = today
+                logger.info("Daily balance reset: %.2f USDT", start_of_day_balance)
+            if this_week != last_reset_week:
+                start_of_week_balance = current_balance
+                last_reset_week = this_week
+                logger.info("Weekly balance reset: %.2f USDT", start_of_week_balance)
+
             # ---- Per-symbol trading loop ----
             for symbol in symbols:
                 try:
@@ -346,6 +458,8 @@ def run_bot(config: Dict[str, Any]) -> None:
                     df.ta.atr(append=True)
                     df.ta.obv(append=True)
                     df.dropna(inplace=True)
+                    # Cache recent close prices for cross-symbol correlation
+                    symbol_close_cache[symbol] = df["close"].values[-30:].tolist()
 
                     if len(df) < 30:
                         logger.warning("[%s] Insufficient data after indicators", symbol)
@@ -380,14 +494,24 @@ def run_bot(config: Dict[str, Any]) -> None:
                                 logger.info(
                                     "[%s] Closing LONG position | PnL=%.4f", symbol, pnl
                                 )
-                                notifier.send_message(
-                                    f"[{symbol}] Closing LONG position | PnL={pnl:.4f}"
+                                closed = close_position_order(
+                                    exchange=exchange,
+                                    notifier=notifier,
+                                    symbol=symbol,
+                                    side="sell",
+                                    amount=trade_amounts[symbol],
+                                    current_price=current_price,
+                                    pnl=pnl,
+                                    dry_run=dry_run,
                                 )
-                                TRADES.labels(
-                                    symbol, "sell", current_price, trade_amounts[symbol]
-                                ).set(1)
-                                positions[symbol] = None
-                                open_positions_meta.pop(symbol, None)
+                                if closed or dry_run:
+                                    TRADES.labels(
+                                        symbol, "sell",
+                                        str(round(current_price, 2)),
+                                        str(round(trade_amounts[symbol], 6))
+                                    ).set(1)
+                                    positions[symbol] = None
+                                    open_positions_meta.pop(symbol, None)
 
                         elif positions[symbol] == "sell":
                             highest_prices[symbol] = min(
@@ -398,14 +522,24 @@ def run_bot(config: Dict[str, Any]) -> None:
                                 logger.info(
                                     "[%s] Closing SHORT position | PnL=%.4f", symbol, pnl
                                 )
-                                notifier.send_message(
-                                    f"[{symbol}] Closing SHORT position | PnL={pnl:.4f}"
+                                closed = close_position_order(
+                                    exchange=exchange,
+                                    notifier=notifier,
+                                    symbol=symbol,
+                                    side="buy",
+                                    amount=trade_amounts[symbol],
+                                    current_price=current_price,
+                                    pnl=pnl,
+                                    dry_run=dry_run,
                                 )
-                                TRADES.labels(
-                                    symbol, "buy", current_price, trade_amounts[symbol]
-                                ).set(1)
-                                positions[symbol] = None
-                                open_positions_meta.pop(symbol, None)
+                                if closed or dry_run:
+                                    TRADES.labels(
+                                        symbol, "buy",
+                                        str(round(current_price, 2)),
+                                        str(round(trade_amounts[symbol], 6))
+                                    ).set(1)
+                                    positions[symbol] = None
+                                    open_positions_meta.pop(symbol, None)
 
                     # ---- Run multi-agent pipeline for new entries ----
                     if positions[symbol] is None:
@@ -482,6 +616,28 @@ def run_bot(config: Dict[str, Any]) -> None:
                     notifier.send_message(
                         f"[ERROR] Trading loop error for {symbol}: {exc}"
                     )
+
+            # ---- Compute pairwise correlation for circuit breaker ----
+            if len(symbols) > 1:
+                try:
+                    import itertools
+                    max_corr = 0.0
+                    sym_pairs = list(itertools.combinations(symbols, 2))
+                    for s1, s2 in sym_pairs:
+                        c1 = symbol_close_cache.get(s1, [])
+                        c2 = symbol_close_cache.get(s2, [])
+                        min_len = min(len(c1), len(c2))
+                        if min_len > 5:
+                            import numpy as _np
+                            r1 = _np.diff(c1[-min_len:]) / _np.array(c1[-min_len:-1])
+                            r2 = _np.diff(c2[-min_len:]) / _np.array(c2[-min_len:-1])
+                            if _np.std(r1) > 0 and _np.std(r2) > 0:
+                                corr = abs(float(_np.corrcoef(r1, r2)[0, 1]))
+                                if not _np.isnan(corr):
+                                    max_corr = max(max_corr, corr)
+                    orchestrator.update_portfolio_correlation(max_corr)
+                except Exception as _corr_exc:
+                    logger.debug("Correlation computation failed: %s", _corr_exc)
 
             # ---- Update pipeline stats in Streamlit session state ----
             stats = orchestrator.get_pipeline_stats()

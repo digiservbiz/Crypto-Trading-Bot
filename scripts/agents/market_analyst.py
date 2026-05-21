@@ -326,34 +326,65 @@ class MarketAnalystAgent(BaseAgent):
     def _compute_adx(
         self, high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14
     ) -> tuple[float, float, float]:
-        """Compute ADX, +DI, and -DI."""
-        if len(close) < period + 1:
+        """Compute ADX, +DI, and -DI using Wilder's smoothing method.
+
+        This is the correct Wilder ADX, not the simplified DX proxy.
+        ADX = smoothed moving average of DX over `period` bars.
+        """
+        if len(close) < period * 2 + 1:
             return 20.0, 25.0, 25.0
-        # True Range
-        tr_list = []
-        plus_dm_list = []
-        minus_dm_list = []
+
+        tr_list: list = []
+        plus_dm_list: list = []
+        minus_dm_list: list = []
+
         for i in range(1, len(close)):
-            tr = max(high[i] - low[i], abs(high[i] - close[i - 1]), abs(low[i] - close[i - 1]))
-            plus_dm = max(high[i] - high[i - 1], 0.0) if (high[i] - high[i - 1]) > (low[i - 1] - low[i]) else 0.0
-            minus_dm = max(low[i - 1] - low[i], 0.0) if (low[i - 1] - low[i]) > (high[i] - high[i - 1]) else 0.0
-            tr_list.append(tr)
-            plus_dm_list.append(plus_dm)
-            minus_dm_list.append(minus_dm)
+            hl = high[i] - low[i]
+            hpc = abs(high[i] - close[i - 1])
+            lpc = abs(low[i] - close[i - 1])
+            tr_list.append(max(hl, hpc, lpc))
 
-        tr_arr = np.array(tr_list[-period:])
-        plus_dm_arr = np.array(plus_dm_list[-period:])
-        minus_dm_arr = np.array(minus_dm_list[-period:])
+            up_move = high[i] - high[i - 1]
+            down_move = low[i - 1] - low[i]
+            plus_dm_list.append(up_move if (up_move > down_move and up_move > 0) else 0.0)
+            minus_dm_list.append(down_move if (down_move > up_move and down_move > 0) else 0.0)
 
-        atr_period = np.mean(tr_arr)
-        if atr_period == 0:
+        # Wilder's initial smoothed value = sum of first `period` values
+        if len(tr_list) < period:
             return 20.0, 25.0, 25.0
 
-        plus_di = 100.0 * np.mean(plus_dm_arr) / atr_period
-        minus_di = 100.0 * np.mean(minus_dm_arr) / atr_period
-        dx = 100.0 * abs(plus_di - minus_di) / (plus_di + minus_di) if (plus_di + minus_di) > 0 else 0.0
-        adx = dx  # Simplified: use current DX as ADX proxy
-        return float(adx), float(plus_di), float(minus_di)
+        smoothed_tr = float(np.sum(tr_list[:period]))
+        smoothed_plus_dm = float(np.sum(plus_dm_list[:period]))
+        smoothed_minus_dm = float(np.sum(minus_dm_list[:period]))
+
+        # Wilder's smoothing for the rest
+        dx_values: list = []
+        for i in range(period, len(tr_list)):
+            smoothed_tr = smoothed_tr - (smoothed_tr / period) + tr_list[i]
+            smoothed_plus_dm = smoothed_plus_dm - (smoothed_plus_dm / period) + plus_dm_list[i]
+            smoothed_minus_dm = smoothed_minus_dm - (smoothed_minus_dm / period) + minus_dm_list[i]
+
+            if smoothed_tr == 0:
+                continue
+
+            plus_di_i = 100.0 * smoothed_plus_dm / smoothed_tr
+            minus_di_i = 100.0 * smoothed_minus_dm / smoothed_tr
+            di_sum = plus_di_i + minus_di_i
+            dx_i = 100.0 * abs(plus_di_i - minus_di_i) / di_sum if di_sum > 0 else 0.0
+            dx_values.append((dx_i, plus_di_i, minus_di_i))
+
+        if not dx_values:
+            return 20.0, 25.0, 25.0
+
+        # ADX = simple average of recent DX values (Wilder: smoothed MA)
+        # Use last `period` DX values for ADX
+        recent_dx = dx_values[-period:]
+        adx = float(np.mean([d[0] for d in recent_dx]))
+        # Use the most recent +DI and -DI
+        plus_di = float(dx_values[-1][1])
+        minus_di = float(dx_values[-1][2])
+
+        return adx, plus_di, minus_di
 
     def _compute_atr(
         self, high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14

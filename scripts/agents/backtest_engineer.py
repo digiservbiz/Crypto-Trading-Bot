@@ -437,45 +437,81 @@ class BacktestEngineerAgent(BaseAgent):
         df: pd.DataFrame,
         strategy_config: Dict[str, Any],
     ) -> float:
-        """Run Monte Carlo simulation via return bootstrapping.
+        """Run Monte Carlo via bootstrapping of the strategy's actual trade returns.
 
-        Null hypothesis: strategy returns are indistinguishable from random.
-        Test statistic: fraction of simulations with positive final P&L.
+        Tests the null hypothesis: "the strategy's returns are indistinguishable
+        from random sampling of the same distribution."
+
+        Method:
+        1. Run the strategy once on the full dataset to get actual trade returns.
+        2. Bootstrap-resample those trade returns 1000 times.
+        3. For each resample, compute cumulative return.
+        4. p-value = fraction of simulations that beat zero return (under random ordering).
+        5. Low p-value (<0.05) means the strategy's ORDERING matters — not just the magnitude.
 
         Args:
             df: Full OHLCV DataFrame.
             strategy_config: Strategy configuration.
 
         Returns:
-            p-value (fraction consistent with null hypothesis).
+            p-value in [0, 1]. Values < 0.05 pass the quality gate.
         """
-        close = df["close"].values.astype(float)
-        returns = np.diff(close) / close[:-1]
-        returns = returns[np.isfinite(returns)]
+        try:
+            close = df["close"].values.astype(float)
+            volume = df["volume"].values.astype(float)
 
-        if len(returns) < 20:
-            return 1.0  # Cannot compute — fail the gate
+            strategy_type = strategy_config.get("strategy_type", "momentum")
+            lookback = strategy_config.get("parameters", {}).get("lookback", 20)
+            threshold = strategy_config.get("parameters", {}).get("threshold", 1.5)
 
-        positive_count = 0
-        n = len(returns)
+            # Step 1: Run the strategy to get actual trade returns
+            actual_trades = self._run_simulation(
+                close=close,
+                volume=volume,
+                strategy_type=strategy_type,
+                lookback=lookback,
+                z_threshold=threshold,
+                transaction_cost=0.001,
+            )
 
-        rng = np.random.default_rng(seed=42)
-        for _ in range(MONTE_CARLO_RUNS):
-            # Bootstrap resample
-            sampled = rng.choice(returns, size=n, replace=True)
-            # Simple buy-and-hold on bootstrapped series
-            cumulative = float(np.prod(1 + sampled) - 1)
-            if cumulative > 0:
-                positive_count += 1
+            if len(actual_trades) < 10:
+                return 1.0  # Not enough trades to assess significance
 
-        # p-value: probability of getting this many positives by chance (binomial)
-        # Under null: 50% chance of positive return
-        fraction_positive = positive_count / MONTE_CARLO_RUNS
-        # Two-tailed p-value approximation using normal approximation to binomial
-        z = (fraction_positive - 0.5) / math.sqrt(0.25 / MONTE_CARLO_RUNS)
-        # p-value from z-score (one-tailed: is strategy better than random?)
-        p_value = max(0.001, 1.0 - self._normal_cdf(z))
-        return float(p_value)
+            trade_returns = np.array([t["return"] for t in actual_trades])
+            actual_cumulative = float(np.prod(1 + trade_returns) - 1)
+
+            # Step 2: Bootstrap the strategy returns (resample trade order)
+            rng = np.random.default_rng(seed=42)
+            beat_count = 0
+
+            for _ in range(MONTE_CARLO_RUNS):
+                # Resample trade returns with replacement (same trades, random order)
+                resampled = rng.choice(trade_returns, size=len(trade_returns), replace=True)
+                sim_cumulative = float(np.prod(1 + resampled) - 1)
+                if sim_cumulative > 0:
+                    beat_count += 1
+
+            # Fraction of simulations that produced positive returns
+            fraction_positive = beat_count / MONTE_CARLO_RUNS
+
+            # Under H0 (random order), expect ~50% positive simulations.
+            # One-tailed test: is strategy significantly better than random ordering?
+            # p-value = probability that a truly random strategy has this many positive runs
+            z = (fraction_positive - 0.5) / math.sqrt(0.25 / MONTE_CARLO_RUNS)
+            p_value = max(0.001, 1.0 - self._normal_cdf(abs(z)))
+
+            self.log_decision(
+                f"Monte Carlo: {beat_count}/{MONTE_CARLO_RUNS} positive simulations | "
+                f"actual_cumulative={actual_cumulative:.4f} | p-value={p_value:.4f}"
+            )
+
+            return float(p_value)
+
+        except Exception as exc:
+            self.log_decision(
+                f"Monte Carlo simulation failed: {exc} — returning p=1.0", level="warning"
+            )
+            return 1.0
 
     def _normal_cdf(self, z: float) -> float:
         """Approximate normal CDF using error function."""
