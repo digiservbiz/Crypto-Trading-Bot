@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-05-21T19:37:08.276Z",
+  "mode": "headless",
+  "workerType": "audit",
+  "model": "haiku",
+  "durationMs": 102166,
+  "executionId": "audit_1779392126110_u36u6l",
+  "success": true,
+  "findings": {
+    "parseError": true,
+    "rawOutput": "The security analysis is complete. The only uncommitted change is `.claude-flow/daemon-state.json` (a temporary Ruflo daemon state file from my analysis). You can restore it with:\n\n```bash\ngit restore .claude-flow/daemon-state.json\n```\n\n**The security report above identifies 10 vulnerabilities** with a risk score of **62/100**. The most critical issues are:\n1. **Unauthenticated Streamlit web app** — anyone can control the trading bot\n2. **No dry-run enforcement** — risk of accidental real trades\n3. **World-readable memory files** — trading strategy exposed\n\nSee the JSON report above for full details and remediation steps.\n"
+  },
+  "rawOutputPreview": "The security analysis is complete. The only uncommitted change is `.claude-flow/daemon-state.json` (a temporary Ruflo daemon state file from my analysis). You can restore it with:\n\n```bash\ngit restore .claude-flow/daemon-state.json\n```\n\n**The security report above identifies 10 vulnerabilities** with a risk score of **62/100**. The most critical issues are:\n1. **Unauthenticated Streamlit web app** — anyone can control the trading bot\n2. **No dry-run enforcement** — risk of accidental real trades\n3. **World-readable memory files** — trading strategy exposed\n\nSee the JSON report above for full details and remediation steps.\n",
+  "rawOutputLength": 630
+}
