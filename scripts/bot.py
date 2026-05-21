@@ -60,6 +60,64 @@ REGIME_CODES = {
 }
 
 
+def _add_indicators(df: pd.DataFrame) -> None:
+    """Add technical indicators to OHLCV DataFrame using pure pandas/numpy.
+
+    Replaces pandas-ta dependency. Appends columns in-place:
+        MACD_12_26_9, MACDs_12_26_9, MACDh_12_26_9
+        RSI_14
+        BBL_20_2.0, BBM_20_2.0, BBU_20_2.0
+        ATRr_14  (ATR ratio vs 20-bar average)
+        OBV
+
+    Args:
+        df: DataFrame with columns open, high, low, close, volume.
+    """
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    volume = df["volume"]
+
+    # --- MACD (12, 26, 9) ---
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    df["MACD_12_26_9"] = macd_line
+    df["MACDs_12_26_9"] = signal_line
+    df["MACDh_12_26_9"] = macd_line - signal_line
+
+    # --- RSI (14) ---
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+    rs = avg_gain / avg_loss.replace(0, float("nan"))
+    df["RSI_14"] = 100 - (100 / (1 + rs))
+
+    # --- Bollinger Bands (20, 2) ---
+    bb_mid = close.rolling(20).mean()
+    bb_std = close.rolling(20).std(ddof=1)
+    df["BBL_20_2.0"] = bb_mid - 2 * bb_std
+    df["BBM_20_2.0"] = bb_mid
+    df["BBU_20_2.0"] = bb_mid + 2 * bb_std
+
+    # --- ATR (14) ---
+    tr = pd.concat([
+        high - low,
+        (high - close.shift()).abs(),
+        (low - close.shift()).abs(),
+    ], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean()
+    atr_20 = tr.rolling(20).mean()
+    df["ATRr_14"] = atr / atr_20.replace(0, float("nan"))
+
+    # --- OBV ---
+    direction = np.sign(close.diff()).fillna(0)
+    df["OBV"] = (direction * volume).cumsum()
+
+
 def get_news(symbol: str) -> list:
     """Fetch recent news articles for a cryptocurrency symbol.
 
@@ -452,11 +510,8 @@ def run_bot(config: Dict[str, Any]) -> None:
                     )
                     df["returns"] = df["close"].pct_change()
                     df["volatility"] = df["returns"].rolling(20).std()
-                    df.ta.macd(append=True)
-                    df.ta.rsi(append=True)
-                    df.ta.bbands(append=True)
-                    df.ta.atr(append=True)
-                    df.ta.obv(append=True)
+                    # Compute indicators with pure pandas/numpy (no pandas-ta dependency)
+                    _add_indicators(df)
                     df.dropna(inplace=True)
                     # Cache recent close prices for cross-symbol correlation
                     symbol_close_cache[symbol] = df["close"].values[-30:].tolist()

@@ -6,9 +6,38 @@ from torch.utils.data import DataLoader, TensorDataset
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 import yaml
 import os
+
+
+def _add_indicators_sequential(df: pd.DataFrame) -> None:
+    """Add technical indicators using pure pandas/numpy — no pandas-ta required.
+
+    Appends columns in-place:
+        MACD_12_26_9, RSI_14, BBL_20_2.0, BBM_20_2.0, BBU_20_2.0
+    """
+    close = df["close"]
+
+    # MACD (12, 26, 9)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    df["MACD_12_26_9"] = macd_line
+
+    # RSI (14)
+    delta = close.diff()
+    avg_gain = delta.clip(lower=0).rolling(14).mean()
+    avg_loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = avg_gain / avg_loss.replace(0, float("nan"))
+    df["RSI_14"] = 100 - (100 / (1 + rs))
+
+    # Bollinger Bands (20, 2)
+    bb_mid = close.rolling(20).mean()
+    bb_std = close.rolling(20).std(ddof=1)
+    df["BBL_20_2.0"] = bb_mid - 2 * bb_std
+    df["BBM_20_2.0"] = bb_mid
+    df["BBU_20_2.0"] = bb_mid + 2 * bb_std
+
 
 # 1. Lightning Data Module
 class CryptoDataModule(pl.LightningDataModule):
@@ -27,17 +56,15 @@ class CryptoDataModule(pl.LightningDataModule):
 
         df = pd.read_csv(data_path)
 
-        # Feature engineering
+        # Feature engineering — pure pandas/numpy, no pandas-ta
         df['returns'] = df['close'].pct_change()
         df['volatility'] = df['returns'].rolling(20).std()
-        df.ta.macd(append=True)
-        df.ta.rsi(append=True)
-        df.ta.bbands(append=True)
+        _add_indicators_sequential(df)
         df.dropna(inplace=True)
 
         # Create sequences
         X, y = [], []
-        self.features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
+        self.features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0']
         for i in range(self.config['data']['lookback'], len(df) - 1):
             X.append(df.iloc[i-self.config['data']['lookback']:i][self.features].values)
             y.append(df['returns'].iloc[i+1] > 0)  # Binary classification
@@ -53,7 +80,7 @@ class CryptoDataModule(pl.LightningDataModule):
         dataset = TensorDataset(self.X[4000:], self.y[4000:])
         return DataLoader(dataset, batch_size=self.config['training']['batch_size'], num_workers=4, pin_memory=True)
 
-from models import LSTMModel, TransformerModel
+from scripts.models import LSTMModel, TransformerModel
 
 # 2. Lightning Model
 class LitSequential(pl.LightningModule):
