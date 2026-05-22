@@ -17,14 +17,22 @@ Architecture:
 
 import time
 import logging
+import json
+import os
 from typing import Dict, Optional, Any
 
-import torch
+import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
 from prometheus_client import Gauge, Counter
 from datetime import datetime, timezone
+
+# Graceful torch import (not needed for core bot loop)
+try:
+    import torch  # noqa: F401
+except ImportError:
+    torch = None  # type: ignore
 
 from scripts.inference.ai_engine import AIEngine
 from scripts.exchange import Exchange
@@ -116,6 +124,93 @@ def _add_indicators(df: pd.DataFrame) -> None:
     # --- OBV ---
     direction = np.sign(close.diff()).fillna(0)
     df["OBV"] = (direction * volume).cumsum()
+
+
+BOT_STATE_PATH = "data/state/bot-state.json"
+_pnl_history: list = []          # module-level rolling P&L log
+
+
+def _write_bot_state(
+    running: bool,
+    balance: float,
+    initial_balance: float,
+    daily_pnl_pct: float,
+    weekly_pnl_pct: float,
+    positions: Dict[str, Any],
+    entry_prices: Dict[str, float],
+    current_prices: Dict[str, float],
+    regimes: Dict[str, Any],
+    pipeline_stats: Dict[str, int],
+    risk_state: Dict[str, Any],
+    last_risk_metrics: Dict[str, float],
+    recent_signals: list,
+    recent_verdicts: list,
+) -> None:
+    """Write live bot state to disk so the Streamlit dashboard can read it.
+
+    Called at the end of every trading cycle. Non-blocking: errors are silently
+    logged so a disk issue never interrupts the trading loop.
+    """
+    global _pnl_history
+
+    # Build positions dict with P&L
+    pos_out: Dict[str, Any] = {}
+    for sym, side in positions.items():
+        if side is None:
+            continue
+        entry = entry_prices.get(sym, 0.0)
+        current = current_prices.get(sym, entry)
+        pnl_pct = ((current - entry) / entry) if entry > 0 else 0.0
+        if side == "sell":
+            pnl_pct = -pnl_pct
+        pos_out[sym] = {
+            "side": side,
+            "entry_price": entry,
+            "current_price": current,
+            "pnl_pct": pnl_pct,
+        }
+
+    # Rolling P&L history (max 500 points)
+    _pnl_history.append({"timestamp": time.time(), "balance": balance})
+    if len(_pnl_history) > 500:
+        _pnl_history = _pnl_history[-500:]
+
+    # Infer circuit breaker states from risk_state
+    daily_loss = risk_state.get("daily_loss_pct", 0.0)
+    weekly_loss = risk_state.get("weekly_loss_pct", 0.0)
+    drawdown = risk_state.get("current_drawdown_pct", 0.0)
+    max_corr = risk_state.get("max_pairwise_correlation", 0.0)
+
+    state = {
+        "running": running,
+        "last_update": time.time(),
+        "balance": balance,
+        "initial_balance": initial_balance,
+        "daily_pnl_pct": daily_pnl_pct,
+        "weekly_pnl_pct": weekly_pnl_pct,
+        "positions": pos_out,
+        "regimes": regimes,
+        "pipeline": pipeline_stats,
+        "circuit_breakers": {
+            "daily_loss_halt": abs(daily_loss) >= 0.03,
+            "weekly_reduction": abs(weekly_loss) >= 0.05,
+            "max_drawdown_halt": drawdown >= 0.15,
+            "correlation_spike": max_corr > 0.85,
+            "vix_spike": False,          # Updated via atr_ratio in risk analyst
+            "concentration_limit": False,
+        },
+        "last_risk_metrics": last_risk_metrics,
+        "recent_signals": recent_signals[-20:],
+        "recent_verdicts": recent_verdicts[-20:],
+        "pnl_history": _pnl_history[-200:],
+    }
+
+    try:
+        os.makedirs(os.path.dirname(BOT_STATE_PATH), exist_ok=True)
+        with open(BOT_STATE_PATH, "w") as f:
+            json.dump(state, f, indent=2, default=str)
+    except Exception as exc:
+        logger.debug("Could not write bot state: %s", exc)
 
 
 def get_news(symbol: str) -> list:
@@ -462,6 +557,16 @@ def run_bot(config: Dict[str, Any]) -> None:
     symbol_close_cache: Dict[str, list] = {s: [] for s in symbols}
     open_positions_meta: Dict[str, Any] = {}
 
+    # ---- Dashboard state tracking ----
+    current_prices: Dict[str, float] = {s: 0.0 for s in symbols}
+    regime_cache: Dict[str, Any] = {}       # symbol → {regime, confidence, indicators}
+    recent_signals_cache: list = []          # last 20 SignalProposals (as dicts)
+    recent_verdicts_cache: list = []         # last 20 RegimeVerdicts (as dicts)
+    last_risk_metrics: Dict[str, float] = {}
+    pipeline_stats: Dict[str, int] = {
+        "cycles": 0, "approvals": 0, "rejections": 0, "cb_events": 0
+    }
+
     logger.info(
         "Bot started | symbols=%s | dry_run=%s | initial_balance=%.2f USDT",
         symbols, dry_run, initial_balance
@@ -481,6 +586,7 @@ def run_bot(config: Dict[str, Any]) -> None:
             TOTAL_PROFIT_LOSS.set(current_balance - initial_balance)
             OPEN_POSITIONS.set(sum(1 for p in positions.values() if p is not None))
             PIPELINE_CYCLES.inc()
+            pipeline_stats["cycles"] += 1
 
             # ---- Daily/Weekly balance reset for circuit breaker accuracy ----
             now_utc = datetime.now(timezone.utc)
@@ -521,6 +627,7 @@ def run_bot(config: Dict[str, Any]) -> None:
                         continue
 
                     current_price = float(df["close"].iloc[-1])
+                    current_prices[symbol] = current_price   # track for dashboard
 
                     # ---- Manage existing position exits ----
                     if positions[symbol] is not None:
@@ -615,13 +722,55 @@ def run_bot(config: Dict[str, Any]) -> None:
                             portfolio_state=portfolio_state,
                         )
 
-                        # ---- Update Prometheus regime metric ----
+                        # ---- Update Prometheus regime metric + dashboard cache ----
                         last_regime = orchestrator._last_regime
                         if last_regime is not None:
                             regime_code = REGIME_CODES.get(last_regime.regime_type, 0)
                             REGIME_GAUGE.labels(symbol=symbol, regime=last_regime.regime_type).set(
                                 regime_code
                             )
+                            regime_cache[symbol] = {
+                                "regime": last_regime.regime_type,
+                                "confidence": last_regime.confidence,
+                                "indicators": last_regime.indicator_values,
+                            }
+                            # Cache recent regime verdict for dashboard
+                            try:
+                                v_dict = {
+                                    "regime_type": last_regime.regime_type,
+                                    "confidence": last_regime.confidence,
+                                    "symbols": last_regime.symbols,
+                                    "timestamp": last_regime.timestamp,
+                                    "verdict_id": last_regime.verdict_id,
+                                    "indicator_values": last_regime.indicator_values,
+                                }
+                                recent_verdicts_cache.append(v_dict)
+                                if len(recent_verdicts_cache) > 50:
+                                    recent_verdicts_cache.pop(0)
+                            except Exception:
+                                pass
+
+                        # Cache last signal for dashboard
+                        last_signal = orchestrator._last_signal
+                        if last_signal is not None:
+                            try:
+                                s_dict = {
+                                    "symbol": last_signal.symbol,
+                                    "side": last_signal.side,
+                                    "size_pct": last_signal.size_pct,
+                                    "confidence": last_signal.confidence,
+                                    "strategy_name": last_signal.strategy_name,
+                                    "anomaly_type": last_signal.anomaly_type,
+                                    "anomaly_score": last_signal.anomaly_score,
+                                    "regime_verdict_id": last_signal.regime_verdict_id,
+                                    "signal_id": last_signal.signal_id,
+                                    "timestamp": last_signal.timestamp,
+                                }
+                                recent_signals_cache.append(s_dict)
+                                if len(recent_signals_cache) > 50:
+                                    recent_signals_cache.pop(0)
+                            except Exception:
+                                pass
 
                         if risk_decision is None:
                             continue
@@ -630,14 +779,25 @@ def run_bot(config: Dict[str, Any]) -> None:
                             CIRCUIT_BREAKER_EVENTS.labels(
                                 reason=risk_decision.circuit_breaker_reason or "UNKNOWN"
                             ).inc()
+                            pipeline_stats["cb_events"] += 1
                             logger.warning(
                                 "[%s] Circuit breaker: %s",
                                 symbol, risk_decision.circuit_breaker_reason
                             )
 
+                        # Capture risk metrics for dashboard
+                        last_risk_metrics.update({
+                            "var_95": risk_decision.var_95,
+                            "cvar_95": risk_decision.cvar_95,
+                            "sharpe_ratio": risk_decision.sharpe_ratio,
+                            "drawdown_pct": getattr(orchestrator._risk_agent, "_state", {})
+                                .get("current_drawdown_pct", 0.0),
+                        })
+
                         # ---- Execute trade ONLY if approved ----
                         if risk_decision.is_approved():
                             PIPELINE_APPROVALS.inc()
+                            pipeline_stats["approvals"] += 1
                             signal = orchestrator._last_signal
                             side = signal.side if signal else "buy"
 
@@ -663,6 +823,7 @@ def run_bot(config: Dict[str, Any]) -> None:
                                 }
                         else:
                             PIPELINE_REJECTIONS.inc()
+                            pipeline_stats["rejections"] += 1
 
                 except Exception as exc:
                     logger.error(
@@ -694,10 +855,31 @@ def run_bot(config: Dict[str, Any]) -> None:
                 except Exception as _corr_exc:
                     logger.debug("Correlation computation failed: %s", _corr_exc)
 
-            # ---- Update pipeline stats in Streamlit session state ----
-            stats = orchestrator.get_pipeline_stats()
-            if hasattr(st, "session_state"):
-                st.session_state["pipeline_stats"] = stats
+            # ---- Write live state for Streamlit dashboard ----
+            try:
+                risk_agent_state = getattr(
+                    getattr(orchestrator, "_risk_agent", None), "_state", {}
+                ) or {}
+                _write_bot_state(
+                    running=True,
+                    balance=current_balance,
+                    initial_balance=initial_balance,
+                    daily_pnl_pct=(current_balance - start_of_day_balance) / start_of_day_balance
+                        if start_of_day_balance > 0 else 0.0,
+                    weekly_pnl_pct=(current_balance - start_of_week_balance) / start_of_week_balance
+                        if start_of_week_balance > 0 else 0.0,
+                    positions=positions,
+                    entry_prices=entry_prices,
+                    current_prices=current_prices,
+                    regimes=regime_cache,
+                    pipeline_stats=dict(pipeline_stats),
+                    risk_state=risk_agent_state,
+                    last_risk_metrics=dict(last_risk_metrics),
+                    recent_signals=list(recent_signals_cache),
+                    recent_verdicts=list(recent_verdicts_cache),
+                )
+            except Exception as _state_exc:
+                logger.debug("State write failed: %s", _state_exc)
 
             time.sleep(60)
 
