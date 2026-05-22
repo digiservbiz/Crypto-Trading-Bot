@@ -527,10 +527,11 @@ def run_bot(config: Dict[str, Any]) -> None:
 
     symbols = config["data"]["symbols"]
     dry_run = config.get("dry_run", True)
+    # Column names match _add_indicators() output (pure pandas/numpy, period=20 BB)
     features = [
         "close", "volume", "volatility",
         "MACD_12_26_9", "RSI_14",
-        "BBL_5_2.0", "BBM_5_2.0", "BBU_5_2.0",
+        "BBL_20_2.0", "BBM_20_2.0", "BBU_20_2.0",
         "ATRr_14", "OBV"
     ]
 
