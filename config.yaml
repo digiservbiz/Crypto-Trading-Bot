@@ -65,3 +65,21 @@ telegram:
   # Leave blank — set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID env vars instead
   token: ''
   chat_id: ''
+
+quantmind:
+  # Path where research_updater.py writes and the bot reads the knowledge cache
+  cache_path: 'data/research_cache.json'
+
+  # Blended sentiment weights (must sum to 1.0)
+  news_sentiment_weight: 0.6
+  research_sentiment_weight: 0.4
+
+  # Multiply position size by the research signal multiplier [0.5, 1.5]
+  research_position_sizing: true
+
+  # Concurrency for the nightly research_updater.py batch ingestion
+  ingestion_concurrency: 3
+
+  # OpenAI API key used by quant-mind paper_flow
+  # Leave blank — set OPENAI_API_KEY env var instead
+  openai_api_key: ''

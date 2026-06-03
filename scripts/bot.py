@@ -41,6 +41,7 @@ from scripts.notifier import Notifier
 from scripts.logger import get_logger
 from scripts.agents.orchestrator import TradingOrchestrator
 from scripts.agents.base_agent import RiskDecision
+from scripts.quantmind_client import QuantMindClient
 
 
 logger = get_logger(__name__)
@@ -560,6 +561,7 @@ def run_bot(config: Dict[str, Any]) -> None:
     exchange = Exchange(config)
     notifier = Notifier(config)
     orchestrator = TradingOrchestrator(config)
+    qm_client = QuantMindClient(config)
 
     symbols = config["data"]["symbols"]
     dry_run = config.get("dry_run", True)
@@ -837,6 +839,19 @@ def run_bot(config: Dict[str, Any]) -> None:
                             pipeline_stats["approvals"] += 1
                             signal = orchestrator._last_signal
                             side = signal.side if signal else "buy"
+
+                            # Research-backed position sizing (#3)
+                            qm_cfg = config.get("quantmind", {})
+                            if qm_cfg.get("research_position_sizing", True):
+                                research_multiplier = qm_client.get_research_signal_multiplier(symbol)
+                                research_sentiment = qm_client.get_research_sentiment(symbol)
+                                logger.info(
+                                    "[%s] QuantMind — sentiment: %.3f  position multiplier: %.3fx",
+                                    symbol, research_sentiment, research_multiplier,
+                                )
+                                risk_decision.adjusted_size_pct = round(
+                                    risk_decision.adjusted_size_pct * research_multiplier, 6
+                                )
 
                             amount = execute_trade(
                                 exchange=exchange,

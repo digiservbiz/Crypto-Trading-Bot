@@ -22,8 +22,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install everything except torch/pytorch-lightning (heavy; not needed for agent tests)
-          grep -v -E "^torch|^pytorch-lightning|^flair|^arch" requirements.txt | pip install -r /dev/stdin
+          # Install everything except torch/pytorch-lightning/flair/arch/quantmind (heavy or git deps)
+          grep -v -E "^torch|^pytorch-lightning|^flair|^arch|^quantmind|^#" requirements.txt | pip install -r /dev/stdin
 
       - name: Syntax check
         run: |
@@ -34,6 +34,8 @@ jobs:
           python -m py_compile scripts/agents/risk_analyst.py
           python -m py_compile scripts/agents/backtest_engineer.py
           python -m py_compile scripts/agents/orchestrator.py
+          python -m py_compile scripts/quantmind_client.py
+          python -m py_compile scripts/research_updater.py
 
       - name: Run agent tests
         run: python -m pytest tests/test_agents.py -v --tb=short

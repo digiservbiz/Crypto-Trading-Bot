@@ -15,3 +15,11 @@ flair
 requests
 scipy>=1.11.0
 statsmodels>=0.14.0
+
+# QuantMind research pipeline (research_updater.py)
+# quantmind @ git+https://github.com/LLMQuant/quant-mind.git
+arxiv
+openai>=1.0.0
+httpx
+pydantic>=2.0
+python-dotenv
