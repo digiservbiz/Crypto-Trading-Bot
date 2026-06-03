@@ -644,11 +644,14 @@ def run_bot(config: Dict[str, Any]) -> None:
             for symbol in symbols:
                 try:
                     # Fetch and prepare OHLCV data
-                    ohlcv = exchange.exchange.fetch_ohlcv(
+                    ohlcv = exchange.fetch_ohlcv(
                         symbol,
                         config["data"]["timeframe"],
-                        limit=config["data"]["lookback"]
+                        limit=config["data"]["lookback"],
                     )
+                    if not ohlcv:
+                        logger.warning("[%s] Empty OHLCV response — skipping cycle", symbol)
+                        continue
                     df = pd.DataFrame(
                         ohlcv,
                         columns=["timestamp", "open", "high", "low", "close", "volume"]

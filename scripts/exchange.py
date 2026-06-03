@@ -50,6 +50,11 @@ class Exchange:
                 "Dry-run and market data will still work on public endpoints."
             )
 
+        sandbox = (
+            os.environ.get("EXCHANGE_SANDBOX", "").lower() == "true"
+            or exchange_config.get("sandbox", False)
+        )
+
         try:
             exchange_cls = getattr(ccxt, exchange_name, None)
             if exchange_cls is None:
@@ -57,8 +62,13 @@ class Exchange:
             self.exchange = exchange_cls({
                 "apiKey": api_key,
                 "secret": secret_key,
+                "enableRateLimit": True,
             })
-            logger.info("Exchange initialized: %s", exchange_name)
+            if sandbox:
+                self.exchange.set_sandbox_mode(True)
+                logger.info("Exchange initialized: %s (SANDBOX/TESTNET)", exchange_name)
+            else:
+                logger.info("Exchange initialized: %s", exchange_name)
         except Exception as exc:
             logger.error("Error connecting to exchange %s: %s", exchange_name, exc)
             raise
@@ -86,6 +96,18 @@ class Exchange:
         except Exception as exc:
             logger.error("Error fetching price for %s: %s", symbol, exc)
             return 0.0
+
+    def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int) -> list:
+        """Fetch OHLCV candles from the exchange.
+
+        Returns:
+            List of [timestamp, open, high, low, close, volume] rows, or [] on error.
+        """
+        try:
+            return self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        except Exception as exc:
+            logger.error("Error fetching OHLCV for %s (%s, limit=%d): %s", symbol, timeframe, limit, exc)
+            return []
 
     def create_order(
         self,

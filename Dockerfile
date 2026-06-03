@@ -1,20 +1,30 @@
-# Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
-# Set the working directory to /app
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
+# Install system deps needed by some Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install any needed packages specified in requirements.txt
-RUN ~/.local/bin/pip install --no-cache-dir -r requirements.txt
+# Copy and install Python dependencies first (layer cache)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Make port 8501 available to the world outside this container
+# Copy application code
+COPY . .
+
+# Run as non-root user
+RUN useradd -m botuser && chown -R botuser:botuser /app
+USER botuser
+
+ENV PYTHONPATH=/app
+ENV DRY_RUN=true
+
 EXPOSE 8501
 
-# Define environment variable
-ENV PYTHONPATH /app
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import json,os,time; s=json.load(open('data/state/bot-state.json')); exit(0 if time.time()-float(s.get('last_update',0))<180 else 1)" \
+    || exit 1
 
-# Run app.py when the container launches
-CMD ["streamlit", "run", "scripts/app.py"]
+CMD ["streamlit", "run", "scripts/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
