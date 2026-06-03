@@ -24,6 +24,12 @@ from typing import Dict, Any, Optional
 import numpy as np
 import pandas as pd
 import streamlit as st
+try:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    _PLOTLY = True
+except ImportError:
+    _PLOTLY = False
 from prometheus_client import start_http_server
 
 # ── Page config ─────────────────────────────────────────────────────────────
@@ -35,8 +41,9 @@ st.set_page_config(
 )
 
 # ── Constants ────────────────────────────────────────────────────────────────
-BOT_STATE_PATH = "data/state/bot-state.json"
-BOT_STOP_FILE  = "data/state/bot.stop"
+BOT_STATE_PATH  = "data/state/bot-state.json"
+BOT_STOP_FILE   = "data/state/bot.stop"
+CHART_DATA_PATH = "data/state/chart-data.json"
 RISK_MEMORY_PATH = "data/memory/trading-risk.json"
 SIGNALS_MEMORY_PATH = "data/memory/trading-signals.json"
 ANALYSIS_MEMORY_PATH = "data/memory/trading-analysis.json"
@@ -186,6 +193,133 @@ def _ago(ts: Optional[float]) -> str:
     if delta < 3600:
         return f"{int(delta / 60)}m ago"
     return f"{int(delta / 3600)}h ago"
+
+
+def _load_chart_data(symbol: str) -> Optional[pd.DataFrame]:
+    """Load cached OHLCV + Ichimoku data for the given symbol."""
+    if not os.path.exists(CHART_DATA_PATH):
+        # Fall back to sample data so the chart always shows something
+        sample = "data/sample_ohlcv.csv"
+        if not os.path.exists(sample):
+            return None
+        df = pd.read_csv(sample).tail(120).copy()
+        df.index = range(len(df))
+        return df
+    try:
+        with open(CHART_DATA_PATH) as f:
+            raw = json.load(f)
+        if symbol not in raw:
+            return None
+        return pd.DataFrame(raw[symbol])
+    except Exception:
+        return None
+
+
+def _ichimoku_chart(df: pd.DataFrame, symbol: str) -> Any:
+    """Build a Plotly candlestick + Ichimoku cloud chart."""
+    if not _PLOTLY:
+        return None
+
+    # Compute Ichimoku in-chart if columns missing (sample data fallback)
+    if "ICH_tenkan" not in df.columns:
+        h, l, c = df["high"], df["low"], df["close"]
+        def _mid(p): return (h.rolling(p).max() + l.rolling(p).min()) / 2
+        df = df.copy()
+        df["ICH_tenkan"]    = _mid(9)
+        df["ICH_kijun"]     = _mid(26)
+        span_a              = (_mid(9) + _mid(26)) / 2
+        span_b              = _mid(52)
+        df["ICH_span_a"]    = span_a.shift(26)
+        df["ICH_span_b"]    = span_b.shift(26)
+        df["ICH_cloud_top"] = span_a.combine(span_b, max)
+        df["ICH_cloud_bot"] = span_a.combine(span_b, min)
+        df.dropna(inplace=True)
+
+    x = list(range(len(df)))   # numeric index so no timestamp gaps
+
+    fig = make_subplots(rows=2, cols=1, row_heights=[0.75, 0.25],
+                        shared_xaxes=True, vertical_spacing=0.04)
+
+    # ── Candlesticks ──────────────────────────────────────────────────────────
+    fig.add_trace(go.Candlestick(
+        x=x, open=df["open"], high=df["high"],
+        low=df["low"],  close=df["close"],
+        name="Price",
+        increasing_line_color="#26a69a",
+        decreasing_line_color="#ef5350",
+    ), row=1, col=1)
+
+    # ── Ichimoku cloud fill ───────────────────────────────────────────────────
+    # Bullish cloud (green) where Span A > Span B
+    above_mask = df["ICH_cloud_top"] == df["ICH_span_a"]
+
+    fig.add_trace(go.Scatter(
+        x=x, y=df["ICH_cloud_top"],
+        fill=None, mode="lines",
+        line=dict(color="rgba(0,0,0,0)"),
+        showlegend=False, hoverinfo="skip",
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=x, y=df["ICH_cloud_bot"],
+        fill="tonexty",
+        mode="lines",
+        line=dict(color="rgba(0,0,0,0)"),
+        fillcolor="rgba(38, 166, 154, 0.15)",
+        name="Cloud (Bull)",
+        hoverinfo="skip",
+    ), row=1, col=1)
+
+    # ── Tenkan-sen (red) ──────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=x, y=df["ICH_tenkan"],
+        mode="lines", name="Tenkan-sen",
+        line=dict(color="#ef5350", width=1.5),
+    ), row=1, col=1)
+
+    # ── Kijun-sen (blue) ─────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=x, y=df["ICH_kijun"],
+        mode="lines", name="Kijun-sen",
+        line=dict(color="#42a5f5", width=1.5),
+    ), row=1, col=1)
+
+    # ── Span A (green dashed) ─────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=x, y=df["ICH_span_a"],
+        mode="lines", name="Span A",
+        line=dict(color="#26a69a", width=1, dash="dot"),
+    ), row=1, col=1)
+
+    # ── Span B (red dashed) ──────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=x, y=df["ICH_span_b"],
+        mode="lines", name="Span B",
+        line=dict(color="#ef5350", width=1, dash="dot"),
+    ), row=1, col=1)
+
+    # ── Volume bars ───────────────────────────────────────────────────────────
+    colors = ["#26a69a" if c >= o else "#ef5350"
+              for c, o in zip(df["close"], df["open"])]
+    fig.add_trace(go.Bar(
+        x=x, y=df["volume"], name="Volume",
+        marker_color=colors, opacity=0.6,
+    ), row=2, col=1)
+
+    fig.update_layout(
+        title=dict(text=f"{symbol} — Ichimoku Kinko Hyo", font=dict(size=16)),
+        height=600,
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        font=dict(color="#fafafa"),
+        xaxis_rangeslider_visible=False,
+        legend=dict(orientation="h", y=1.02, x=0),
+        margin=dict(l=10, r=10, t=60, b=10),
+    )
+    fig.update_xaxes(showgrid=False, zeroline=False,
+                     tickfont=dict(color="#888"))
+    fig.update_yaxes(showgrid=True, gridcolor="#1e1e2e",
+                     zeroline=False, tickfont=dict(color="#888"))
+    return fig
 
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
@@ -399,6 +533,22 @@ with tab_overview:
             "Count": [approvals, rejections, cb_events]
         }).set_index("Category")
         st.bar_chart(chart_data)
+
+    st.markdown("---")
+
+    # ── Live Ichimoku Chart ──────────────────────────────────────────────────
+    st.subheader("📈 Live Price Chart — Ichimoku Kinko Hyo")
+    symbols_config = _load_config().get("data", {}).get("symbols", ["BTC/USDT"])
+    chart_symbol = st.selectbox("Symbol", symbols_config, key="chart_symbol")
+    chart_df = _load_chart_data(chart_symbol)
+    if chart_df is not None and _PLOTLY:
+        fig = _ichimoku_chart(chart_df, chart_symbol)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+    elif not _PLOTLY:
+        st.info("Install plotly (`pip install plotly`) to enable the live chart.")
+    else:
+        st.info("No chart data yet — start the bot to see live prices.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

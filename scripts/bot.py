@@ -163,8 +163,42 @@ def _add_indicators(df: pd.DataFrame) -> None:
     df["OBV"] = (direction * volume).cumsum()
 
 
-BOT_STATE_PATH = "data/state/bot-state.json"
+BOT_STATE_PATH  = "data/state/bot-state.json"
+CHART_DATA_PATH = "data/state/chart-data.json"
 _pnl_history: list = []          # module-level rolling P&L log
+
+
+def _write_chart_data(symbol: str, df: pd.DataFrame, n_candles: int = 200) -> None:
+    """Write the last N candles + Ichimoku values to a JSON file for the dashboard."""
+    try:
+        cols = ["open", "high", "low", "close", "volume",
+                "ICH_tenkan", "ICH_kijun", "ICH_cloud_top", "ICH_cloud_bot",
+                "ICH_span_a", "ICH_span_b", "ICH_tk_cross"]
+        available = [c for c in cols if c in df.columns]
+        chunk = df[available].tail(n_candles).copy()
+        chunk.index = range(len(chunk))   # reset index for clean JSON
+
+        # Add a simple timestamp sequence if no timestamp column
+        if "timestamp" not in df.columns:
+            chunk["timestamp"] = [int(datetime.now(timezone.utc).timestamp()) - (len(chunk) - i) * 300
+                                   for i in range(len(chunk))]
+
+        os.makedirs(os.path.dirname(CHART_DATA_PATH), exist_ok=True)
+        existing: dict = {}
+        if os.path.exists(CHART_DATA_PATH):
+            try:
+                with open(CHART_DATA_PATH) as f:
+                    existing = json.load(f)
+            except Exception:
+                existing = {}
+
+        existing[symbol] = chunk.to_dict(orient="list")
+        existing["_updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        with open(CHART_DATA_PATH, "w") as f:
+            json.dump(existing, f)
+    except Exception as exc:
+        logger.debug("Chart data write failed: %s", exc)
 
 
 def _write_bot_state(
@@ -676,6 +710,8 @@ def run_bot(config: Dict[str, Any]) -> None:
                     df.dropna(inplace=True)
                     # Cache recent close prices for cross-symbol correlation
                     symbol_close_cache[symbol] = df["close"].values[-30:].tolist()
+                    # Write chart data for dashboard Ichimoku overlay
+                    _write_chart_data(symbol, df)
 
                     if len(df) < 30:
                         logger.warning("[%s] Insufficient data after indicators", symbol)

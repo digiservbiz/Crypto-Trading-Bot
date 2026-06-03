@@ -8,6 +8,7 @@ torch>=2.0.0
 pytorch-lightning
 pyyaml
 streamlit
+plotly>=5.18.0
 prometheus-client
 python-telegram-bot
 pytest
