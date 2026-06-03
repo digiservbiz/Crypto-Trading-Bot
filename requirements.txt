@@ -7,7 +7,6 @@ joblib
 torch>=2.0.0
 pytorch-lightning
 pyyaml
-pandas-ta
 streamlit
 prometheus-client
 python-telegram-bot

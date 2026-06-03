@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, master, "claude/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # Install everything except torch/pytorch-lightning (heavy; not needed for agent tests)
+          grep -v -E "^torch|^pytorch-lightning|^flair|^arch" requirements.txt | pip install -r /dev/stdin
+
+      - name: Syntax check
+        run: |
+          python -m py_compile scripts/app.py
+          python -m py_compile scripts/bot.py
+          python -m py_compile scripts/agents/market_analyst.py
+          python -m py_compile scripts/agents/trading_strategist.py
+          python -m py_compile scripts/agents/risk_analyst.py
+          python -m py_compile scripts/agents/backtest_engineer.py
+          python -m py_compile scripts/agents/orchestrator.py
+
+      - name: Run agent tests
+        run: python -m pytest tests/test_agents.py -v --tb=short
+
+      - name: Verify sample data exists
+        run: python -c "import pandas as pd; df = pd.read_csv('data/sample_ohlcv.csv'); assert len(df) >= 4000, f'Expected >=4000 rows, got {len(df)}'"
