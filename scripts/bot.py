@@ -19,12 +19,13 @@ import time
 import logging
 import json
 import os
+import signal
+import sys
 from typing import Dict, Optional, Any
 
 import numpy as np
 import pandas as pd
 import requests
-import streamlit as st
 from prometheus_client import Gauge, Counter
 from datetime import datetime, timezone
 
@@ -66,6 +67,29 @@ REGIME_CODES = {
     "low-volatility": -1,
     "transitioning": 0,
 }
+
+# ---- Autonomous operation control ----
+BOT_STOP_FILE = "data/state/bot.stop"
+_stop_requested: bool = False   # set True by SIGTERM / SIGINT
+
+
+def _signal_handler(signum: int, frame: Any) -> None:
+    """Handle SIGTERM and SIGINT for graceful shutdown."""
+    global _stop_requested
+    logger.info("Shutdown signal %s received — stopping after current cycle", signum)
+    _stop_requested = True
+
+
+def _is_running() -> bool:
+    """Return True while the bot should keep looping.
+
+    Stops when either:
+    - SIGTERM / SIGINT was received (_stop_requested flag)
+    - The sentinel file data/state/bot.stop exists (written by dashboard Stop button)
+    """
+    if _stop_requested:
+        return False
+    return not os.path.exists(BOT_STOP_FILE)
 
 
 def _add_indicators(df: pd.DataFrame) -> None:
@@ -519,6 +543,18 @@ def run_bot(config: Dict[str, Any]) -> None:
     Args:
         config: Full bot configuration dictionary.
     """
+    global _stop_requested
+    _stop_requested = False
+
+    # Register signal handlers for graceful shutdown (SIGTERM from Docker/systemd, SIGINT from Ctrl+C)
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+
+    # Remove any leftover stop sentinel from a previous run
+    if os.path.exists(BOT_STOP_FILE):
+        os.remove(BOT_STOP_FILE)
+        logger.info("Cleared previous stop sentinel")
+
     # ---- Initialize components ----
     ai_engine = AIEngine(config)
     exchange = Exchange(config)
@@ -573,7 +609,7 @@ def run_bot(config: Dict[str, Any]) -> None:
         symbols, dry_run, initial_balance
     )
 
-    while st.session_state.get("bot_running", False):
+    while _is_running():
         try:
             # ---- Update global metrics ----
             try:
@@ -888,3 +924,61 @@ def run_bot(config: Dict[str, Any]) -> None:
             logger.error("Main bot loop error: %s", exc)
             notifier.send_message(f"[ERROR] Main bot loop: {exc}")
             time.sleep(60)
+
+    # ---- Bot has stopped — write final state and clean up ----
+    logger.info("Bot loop exited cleanly | cycles=%d approvals=%d",
+                pipeline_stats["cycles"], pipeline_stats["approvals"])
+    try:
+        risk_agent_state = getattr(
+            getattr(orchestrator, "_risk_agent", None), "_state", {}
+        ) or {}
+        _write_bot_state(
+            running=False,
+            balance=current_balance if "current_balance" in dir() else initial_balance,
+            initial_balance=initial_balance,
+            daily_pnl_pct=0.0,
+            weekly_pnl_pct=0.0,
+            positions=positions,
+            entry_prices=entry_prices,
+            current_prices=current_prices,
+            regimes=regime_cache,
+            pipeline_stats=dict(pipeline_stats),
+            risk_state=risk_agent_state,
+            last_risk_metrics=dict(last_risk_metrics),
+            recent_signals=list(recent_signals_cache),
+            recent_verdicts=list(recent_verdicts_cache),
+        )
+    except Exception:
+        pass
+    if os.path.exists(BOT_STOP_FILE):
+        os.remove(BOT_STOP_FILE)
+
+
+if __name__ == "__main__":
+    """Standalone entry point — runs the bot without Streamlit.
+
+    Usage:
+        python -m scripts.bot                        # uses config.yaml
+        python -m scripts.bot --config custom.yaml
+        python -m scripts.bot --dry-run              # force dry-run mode
+        DRY_RUN=true python -m scripts.bot
+
+    Stops cleanly on Ctrl+C, SIGTERM, or when data/state/bot.stop is created.
+    """
+    import argparse
+    import yaml
+
+    parser = argparse.ArgumentParser(description="Crypto Trading Bot — standalone mode")
+    parser.add_argument("--config", default="config.yaml", help="Path to config YAML")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Force dry-run mode (no real orders)")
+    args = parser.parse_args()
+
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
+
+    # CLI flag takes priority, then env var, then config file
+    if args.dry_run or os.environ.get("DRY_RUN", "").lower() == "true":
+        cfg["dry_run"] = True
+
+    run_bot(cfg)

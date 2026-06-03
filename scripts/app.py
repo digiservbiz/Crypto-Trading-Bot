@@ -13,9 +13,11 @@ State is read from data/state/bot-state.json written by the bot on every cycle.
 
 import json
 import os
+import subprocess
+import sys
+import threading
 import time
 import yaml
-import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
@@ -34,6 +36,7 @@ st.set_page_config(
 
 # ── Constants ────────────────────────────────────────────────────────────────
 BOT_STATE_PATH = "data/state/bot-state.json"
+BOT_STOP_FILE  = "data/state/bot.stop"
 RISK_MEMORY_PATH = "data/memory/trading-risk.json"
 SIGNALS_MEMORY_PATH = "data/memory/trading-signals.json"
 ANALYSIS_MEMORY_PATH = "data/memory/trading-analysis.json"
@@ -111,6 +114,52 @@ def _bot_state() -> dict:
     return state
 
 
+def _bot_actually_running() -> bool:
+    """True if the bot process is alive and recently updated its state file.
+
+    Uses two signals:
+    1. bot-state.json says running=True
+    2. last_update is within the last 150 seconds (2.5 × 60s cycle)
+
+    This is reliable across browser refreshes because it reads from disk,
+    not from Streamlit session state.
+    """
+    state = _bot_state()
+    if not state.get("running", False):
+        return False
+    last = state.get("last_update")
+    if last is None:
+        return False
+    return (time.time() - float(last)) < 150
+
+
+def _start_bot(config_path: str, dry_run: bool) -> None:
+    """Spawn the bot as a standalone subprocess."""
+    # Remove any leftover stop sentinel
+    if os.path.exists(BOT_STOP_FILE):
+        os.remove(BOT_STOP_FILE)
+
+    cmd = [sys.executable, "-m", "scripts.bot", "--config", config_path]
+    if dry_run:
+        cmd.append("--dry-run")
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    # Store PID so dashboard can show it; not needed for control
+    st.session_state["bot_pid"] = proc.pid
+    st.session_state["bot_running"] = True
+
+
+def _stop_bot() -> None:
+    """Write the stop sentinel — the bot will exit after its current cycle."""
+    os.makedirs(os.path.dirname(BOT_STOP_FILE), exist_ok=True)
+    with open(BOT_STOP_FILE, "w") as f:
+        f.write(str(time.time()))
+    st.session_state["bot_running"] = False
+
+
 def _pnl_color(pnl: float) -> str:
     if pnl > 0:
         return "normal"
@@ -180,7 +229,7 @@ div[data-testid="stHorizontalBlock"] { gap: 12px; }
 
 # ── Header ────────────────────────────────────────────────────────────────────
 state = _bot_state()
-running = state["running"]
+running = _bot_actually_running()   # truth from state file, survives browser refresh
 last_update = state.get("last_update")
 
 col_title, col_status, col_refresh = st.columns([4, 2, 1])
@@ -735,10 +784,6 @@ with st.sidebar:
 
     config_data = _load_config()
 
-    if "bot_running" not in st.session_state:
-        st.session_state.bot_running = False
-    if "bot_thread" not in st.session_state:
-        st.session_state.bot_thread = None
     if "metrics_started" not in st.session_state:
         st.session_state.metrics_started = False
 
@@ -752,10 +797,9 @@ with st.sidebar:
     st.markdown("---")
 
     # ── Start/Stop ───────────────────────────────────────────────────────────
-    if not st.session_state.bot_running:
+    running = _bot_actually_running()
+    if not running:
         if st.button("▶️ Start Bot", type="primary", use_container_width=True):
-            config_data["dry_run"] = dry_run
-
             if not st.session_state.metrics_started:
                 try:
                     metrics_thread = threading.Thread(
@@ -766,28 +810,13 @@ with st.sidebar:
                 except Exception:
                     pass  # Port may already be in use
 
-            from scripts.bot import run_bot
-            bot_thread = threading.Thread(
-                target=run_bot, args=(config_data,), daemon=True
-            )
-            bot_thread.start()
-            st.session_state.bot_thread = bot_thread
-            st.session_state.bot_running = True
+            _start_bot(CONFIG_PATH, dry_run)
             st.success("✅ Bot started!")
             st.rerun()
     else:
         if st.button("⏹ Stop Bot", type="secondary", use_container_width=True):
-            st.session_state.bot_running = False
-            # Write stopped state
-            try:
-                os.makedirs(os.path.dirname(BOT_STATE_PATH), exist_ok=True)
-                stopped = _bot_state()
-                stopped["running"] = False
-                with open(BOT_STATE_PATH, "w") as f:
-                    json.dump(stopped, f, indent=2)
-            except Exception:
-                pass
-            st.warning("⏹ Bot stopped.")
+            _stop_bot()
+            st.warning("⏹ Stop signal sent — bot will halt after current cycle.")
             st.rerun()
 
     st.markdown("---")
