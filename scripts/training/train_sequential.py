@@ -6,9 +6,48 @@ from torch.utils.data import DataLoader, TensorDataset
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 import yaml
 import os
+
+
+def _ichimoku_midprice(high: pd.Series, low: pd.Series, period: int) -> pd.Series:
+    return (high.rolling(period).max() + low.rolling(period).min()) / 2
+
+
+def _add_indicators_sequential(df: pd.DataFrame) -> None:
+    """Add Ichimoku + supporting indicators — pure pandas/numpy, no pandas-ta.
+
+    Appends columns in-place:
+        ICH_tenkan, ICH_kijun, ICH_span_a, ICH_span_b,
+        ICH_cloud_top, ICH_cloud_bot, ICH_tk_cross,
+        BBL_20_2.0, BBM_20_2.0, BBU_20_2.0
+    """
+    close = df["close"]
+    high  = df["high"]
+    low   = df["low"]
+
+    # Ichimoku Kinko Hyo
+    tenkan = _ichimoku_midprice(high, low, 9)
+    kijun  = _ichimoku_midprice(high, low, 26)
+    span_a = (tenkan + kijun) / 2
+    span_b = _ichimoku_midprice(high, low, 52)
+
+    df["ICH_tenkan"]    = tenkan
+    df["ICH_kijun"]     = kijun
+    df["ICH_span_a"]    = span_a.shift(26)
+    df["ICH_span_b"]    = span_b.shift(26)
+    df["ICH_cloud_top"] = span_a.combine(span_b, max)
+    df["ICH_cloud_bot"] = span_a.combine(span_b, min)
+    tk_above = (tenkan > kijun).astype(int)
+    df["ICH_tk_cross"]  = tk_above.diff().fillna(0)
+
+    # Bollinger Bands (20, 2) — kept for mean-reversion
+    bb_mid = close.rolling(20).mean()
+    bb_std = close.rolling(20).std(ddof=1)
+    df["BBL_20_2.0"] = bb_mid - 2 * bb_std
+    df["BBM_20_2.0"] = bb_mid
+    df["BBU_20_2.0"] = bb_mid + 2 * bb_std
+
 
 # 1. Lightning Data Module
 class CryptoDataModule(pl.LightningDataModule):
@@ -27,17 +66,20 @@ class CryptoDataModule(pl.LightningDataModule):
 
         df = pd.read_csv(data_path)
 
-        # Feature engineering
+        # Feature engineering — pure pandas/numpy, no pandas-ta
         df['returns'] = df['close'].pct_change()
         df['volatility'] = df['returns'].rolling(20).std()
-        df.ta.macd(append=True)
-        df.ta.rsi(append=True)
-        df.ta.bbands(append=True)
+        _add_indicators_sequential(df)
         df.dropna(inplace=True)
 
         # Create sequences
         X, y = [], []
-        self.features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_5_2.0', 'BBM_5_2.0', 'BBU_5_2.0']
+        self.features = [
+            'close', 'volume', 'volatility',
+            'ICH_tenkan', 'ICH_kijun', 'ICH_span_a', 'ICH_span_b',
+            'ICH_cloud_top', 'ICH_cloud_bot', 'ICH_tk_cross',
+            'BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0',
+        ]
         for i in range(self.config['data']['lookback'], len(df) - 1):
             X.append(df.iloc[i-self.config['data']['lookback']:i][self.features].values)
             y.append(df['returns'].iloc[i+1] > 0)  # Binary classification
@@ -53,7 +95,7 @@ class CryptoDataModule(pl.LightningDataModule):
         dataset = TensorDataset(self.X[4000:], self.y[4000:])
         return DataLoader(dataset, batch_size=self.config['training']['batch_size'], num_workers=4, pin_memory=True)
 
-from models import LSTMModel, TransformerModel
+from scripts.models import LSTMModel, TransformerModel
 
 # 2. Lightning Model
 class LitSequential(pl.LightningModule):

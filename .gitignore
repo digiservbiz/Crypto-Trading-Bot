@@ -6,6 +6,7 @@
 /data/*
 !/data/.gitkeep
 !/data/.gitignore
+!/data/sample_ohlcv.csv
 
 # Sensitive files (always exclude)
 .env
@@ -19,8 +20,14 @@
 /data/*
 !/data/.gitkeep
 !/data/.gitignore
+!/data/sample_ohlcv.csv
 
 # Sensitive files (always exclude)
 .env
 *.key
 *.secret
+data/memory/*.json
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

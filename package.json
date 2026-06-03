@@ -1,0 +1,19 @@
+{
+  "name": "crypto-trading-bot",
+  "version": "1.0.0",
+  "description": "AI-powered crypto trading bot built on ruflo multi-agent framework",
+  "scripts": {
+    "agent:init": "npx ruflo@latest init wizard",
+    "plugin:neural-trader": "claude --plugin-dir plugins/ruflo-neural-trader",
+    "plugin:market-data": "claude --plugin-dir plugins/ruflo-market-data",
+    "trader:signal": "npx ruflo trader signal",
+    "trader:backtest": "npx ruflo trader backtest",
+    "trader:risk": "npx ruflo trader risk assess",
+    "trader:live": "npx ruflo trader live"
+  },
+  "keywords": ["crypto", "trading", "ruflo", "multi-agent", "claude", "ai"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -5,21 +5,49 @@ services:
     build: .
     ports:
       - "8501:8501"
+    env_file:
+      - .env          # copy .env.example → .env and fill in your secrets
+    environment:
+      - DRY_RUN=${DRY_RUN:-true}
+      - EXCHANGE_API_KEY=${EXCHANGE_API_KEY:-}
+      - EXCHANGE_SECRET_KEY=${EXCHANGE_SECRET_KEY:-}
+      - EXCHANGE_SANDBOX=${EXCHANGE_SANDBOX:-false}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     volumes:
-      - .:/app
+      - bot_data:/app/data
+      - bot_models:/app/models
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    depends_on:
+      - prometheus
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:latest
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:latest
     ports:
       - "3000:3000"
     volumes:
       - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
+    restart: unless-stopped
+
+volumes:
+  bot_data:
+  bot_models:
+  prometheus_data:
+  grafana_data:

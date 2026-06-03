@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-21T19:33:26.106Z",
+  "projectRoot": "/home/user/Crypto-Trading-Bot",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": false,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1779392006106
+}

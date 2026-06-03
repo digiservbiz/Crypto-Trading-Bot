@@ -1,15 +1,26 @@
 ccxt
 pandas
 numpy
-scikit-learn
-arch
+scikit-learn>=1.3.0
+arch>=6.2.0
 joblib
+torch>=2.0.0
 pytorch-lightning
 pyyaml
-pandas-ta
 streamlit
+plotly>=5.18.0
 prometheus-client
 python-telegram-bot
 pytest
 flair
 requests
+scipy>=1.11.0
+statsmodels>=0.14.0
+
+# QuantMind research pipeline (research_updater.py)
+# quantmind @ git+https://github.com/LLMQuant/quant-mind.git
+arxiv
+openai>=1.0.0
+httpx
+pydantic>=2.0
+python-dotenv

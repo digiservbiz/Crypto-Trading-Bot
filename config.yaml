@@ -35,8 +35,9 @@ inference:
 
 exchange:
   name: 'binance'
-  api_key: 'YOUR_API_KEY'
-  secret_key: 'YOUR_SECRET_KEY'
+  # Leave blank — set EXCHANGE_API_KEY and EXCHANGE_SECRET_KEY env vars instead
+  api_key: ''
+  secret_key: ''
 
 trading:
   risk_percentage: 0.01
@@ -61,5 +62,24 @@ sentiment_analysis:
     CoinDesk: 0.8
 
 telegram:
-  token: 'YOUR_TELEGRAM_BOT_TOKEN'
-  chat_id: 'YOUR_TELEGRAM_CHAT_ID'
+  # Leave blank — set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID env vars instead
+  token: ''
+  chat_id: ''
+
+quantmind:
+  # Path where research_updater.py writes and the bot reads the knowledge cache
+  cache_path: 'data/research_cache.json'
+
+  # Blended sentiment weights (must sum to 1.0)
+  news_sentiment_weight: 0.6
+  research_sentiment_weight: 0.4
+
+  # Multiply position size by the research signal multiplier [0.5, 1.5]
+  research_position_sizing: true
+
+  # Concurrency for the nightly research_updater.py batch ingestion
+  ingestion_concurrency: 3
+
+  # OpenAI API key used by quant-mind paper_flow
+  # Leave blank — set OPENAI_API_KEY env var instead
+  openai_api_key: ''
