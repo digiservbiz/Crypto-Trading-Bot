@@ -325,7 +325,9 @@ class TestMarketAnalyst:
         agent = MarketAnalystAgent(config)
         df = _make_ohlcv(n=100)
         verdict = agent.analyze(df, ["BTC/USDT"])
-        for key in ("adx", "rsi", "macd_hist", "bb_width", "atr", "obv_trend"):
+        for key in ("tenkan", "kijun", "span_a", "span_b", "cloud_top", "cloud_bot",
+                    "price_vs_cloud", "tk_cross", "cloud_bullish",
+                    "adx", "atr", "obv_trend", "bb_width"):
             assert key in verdict.indicator_values
 
     def test_confidence_in_range(self, config):

@@ -1,8 +1,15 @@
 """Market regime detection agent — entry point of the live trading pipeline.
 
-The MarketAnalystAgent classifies the current market regime using technical
-indicators (ADX, RSI, Bollinger Bands, ATR, MACD, OBV) and produces a
-RegimeVerdict that drives strategy selection downstream.
+The MarketAnalystAgent classifies the current market regime using Ichimoku
+Kinko Hyo as the primary signal, supported by ADX (trend strength), ATR
+(volatility), and OBV (volume trend).
+
+Ichimoku components used:
+    Tenkan-sen  (9-period midprice)  — fast momentum line
+    Kijun-sen   (26-period midprice) — slow baseline / support-resistance
+    Senkou Span A  = (tenkan + kijun) / 2
+    Senkou Span B  = 52-period midprice
+    Cloud (Kumo)   = region between Span A and Span B
 
 Pipeline position: START → market-analyst → trading-strategist → risk-analyst → broker
 
@@ -23,26 +30,22 @@ logger = logging.getLogger(__name__)
 class MarketAnalystAgent(BaseAgent):
     """Entry-point agent responsible for market regime classification.
 
-    Computes 6 technical indicators (RSI, MACD, Bollinger Bands, ADX, ATR, OBV)
-    and produces a RegimeVerdict representing one of 6 possible market states.
-
-    Regimes:
-        bull-trending: ADX > 25, +DI > -DI, RSI 55–70
-        bear-trending: ADX > 25, -DI > +DI, RSI 30–45
-        ranging: ADX < 20, BB width within historical norm
-        high-volatility: ATR > 2x 20-period average
-        low-volatility: ATR < 0.5x 20-period average
-        transitioning: Weak/mixed signals, confidence < 0.4
+    Uses Ichimoku Kinko Hyo as the primary regime signal:
+        bull-trending : price above cloud, Span A > Span B, tenkan > kijun
+        bear-trending : price below cloud, Span A < Span B, tenkan < kijun
+        ranging       : price inside the cloud
+        high-volatility: ATR > 2× 20-period average (overrides cloud position)
+        low-volatility : ATR < 0.5× 20-period average
+        transitioning  : price just crossed cloud boundary or weak signals
     """
 
-    # Confidence scoring weights per indicator
+    # Confidence scoring weights per signal source
     CONFIDENCE_WEIGHTS = {
-        "adx": 0.25,
-        "rsi": 0.20,
-        "macd": 0.20,
-        "bb": 0.15,
-        "atr": 0.15,
-        "obv": 0.05,
+        "ichimoku_cloud": 0.35,   # primary: price vs cloud
+        "ichimoku_tk":    0.25,   # TK cross direction
+        "adx":            0.20,   # trend strength confirmation
+        "atr":            0.12,   # volatility context
+        "obv":            0.08,   # volume confirmation
     }
 
     def __init__(self, config: Dict[str, Any]) -> None:
@@ -110,10 +113,10 @@ class MarketAnalystAgent(BaseAgent):
             return self._degraded_verdict(symbols, str(exc))
 
     def _compute_indicators(self, df: pd.DataFrame) -> Dict[str, float]:
-        """Compute all 6 required technical indicators.
+        """Compute Ichimoku + supporting indicators.
 
         Args:
-            df: Clean OHLCV DataFrame.
+            df: Clean OHLCV DataFrame (minimum 60 bars recommended).
 
         Returns:
             Dictionary of indicator names to their latest values.
@@ -123,148 +126,160 @@ class MarketAnalystAgent(BaseAgent):
         low = df["low"].values.astype(float)
         volume = df["volume"].values.astype(float)
 
-        # --- RSI (14) ---
-        rsi = self._compute_rsi(close, period=14)
+        # --- Ichimoku Kinko Hyo (primary) ---
+        ich = self._compute_ichimoku(high, low, close)
 
-        # --- MACD (12, 26, 9) ---
-        macd, macd_signal, macd_hist = self._compute_macd(close)
-
-        # --- Bollinger Bands (20, 2) ---
-        bb_upper, bb_middle, bb_lower, bb_width, bb_pct_b = self._compute_bollinger(close, period=20)
-
-        # --- ADX + DI (14) ---
+        # --- ADX (14) — trend strength, confirms Ichimoku direction ---
         adx, plus_di, minus_di = self._compute_adx(high, low, close, period=14)
 
-        # --- ATR (14) ---
+        # --- ATR (14) — volatility regime detection ---
         atr, atr_ratio = self._compute_atr(high, low, close, period=14)
 
-        # --- OBV trend ---
+        # --- OBV trend — volume confirmation ---
         obv_trend = self._compute_obv_trend(close, volume)
 
+        # --- Bollinger Bands (kept for ranging/mean-reversion downstream) ---
+        bb_upper, bb_middle, bb_lower, bb_width, bb_pct_b = self._compute_bollinger(close, period=20)
+
         return {
-            "adx": float(adx),
-            "plus_di": float(plus_di),
-            "minus_di": float(minus_di),
-            "rsi": float(rsi),
-            "macd": float(macd),
-            "macd_signal": float(macd_signal),
-            "macd_hist": float(macd_hist),
-            "bb_upper": float(bb_upper),
-            "bb_middle": float(bb_middle),
-            "bb_lower": float(bb_lower),
-            "bb_width": float(bb_width),
-            "bb_pct_b": float(bb_pct_b),
-            "atr": float(atr),
-            "atr_ratio": float(atr_ratio),
-            "obv_trend": float(obv_trend),
-            "close": float(close[-1]),
-            "ma_20": float(np.mean(close[-20:])),
+            # Ichimoku
+            "tenkan":       ich["tenkan"],
+            "kijun":        ich["kijun"],
+            "span_a":       ich["span_a"],
+            "span_b":       ich["span_b"],
+            "cloud_top":    ich["cloud_top"],
+            "cloud_bot":    ich["cloud_bot"],
+            "price_vs_cloud": ich["price_vs_cloud"],  # +1 above, 0 inside, -1 below
+            "tk_cross":     ich["tk_cross"],           # +1 bull, -1 bear, 0 none
+            "cloud_bullish": ich["cloud_bullish"],      # 1.0 if Span A > Span B
+            # Supporting
+            "adx":          float(adx),
+            "plus_di":      float(plus_di),
+            "minus_di":     float(minus_di),
+            "atr":          float(atr),
+            "atr_ratio":    float(atr_ratio),
+            "obv_trend":    float(obv_trend),
+            "bb_upper":     float(bb_upper),
+            "bb_middle":    float(bb_middle),
+            "bb_lower":     float(bb_lower),
+            "bb_width":     float(bb_width),
+            "bb_pct_b":     float(bb_pct_b),
+            "close":        float(close[-1]),
+            "ma_20":        float(np.mean(close[-20:])),
         }
 
     def _classify_regime(
         self, indicators: Dict[str, float]
     ) -> tuple[str, float]:
-        """Apply decision tree to classify regime and compute confidence.
+        """Classify market regime using Ichimoku as primary signal.
+
+        Decision hierarchy:
+          1. Volatility check (ATR) — overrides cloud position
+          2. Cloud position (price above / inside / below)
+          3. Cloud colour (Span A vs Span B)
+          4. TK cross direction
+          5. ADX for trend-strength confidence boost
 
         Args:
-            indicators: Dictionary of computed indicator values.
+            indicators: Dictionary from _compute_indicators().
 
         Returns:
             Tuple of (regime_type, confidence_score).
         """
-        adx = indicators.get("adx", 0.0)
-        plus_di = indicators.get("plus_di", 0.0)
-        minus_di = indicators.get("minus_di", 0.0)
-        rsi = indicators.get("rsi", 50.0)
-        macd_hist = indicators.get("macd_hist", 0.0)
-        bb_pct_b = indicators.get("bb_pct_b", 0.5)
-        bb_width = indicators.get("bb_width", 0.0)
-        atr_ratio = indicators.get("atr_ratio", 1.0)
-        obv_trend = indicators.get("obv_trend", 0.0)
-        close = indicators.get("close", 0.0)
-        ma_20 = indicators.get("ma_20", 0.0)
+        price_vs_cloud  = indicators.get("price_vs_cloud", 0.0)   # +1 above, 0 inside, -1 below
+        cloud_bullish   = indicators.get("cloud_bullish", 0.0)     # 1.0 = Span A > Span B
+        tk_cross        = indicators.get("tk_cross", 0.0)          # +1 / -1 / 0
+        tenkan          = indicators.get("tenkan", 0.0)
+        kijun           = indicators.get("kijun", 0.0)
+        adx             = indicators.get("adx", 20.0)
+        plus_di         = indicators.get("plus_di", 25.0)
+        minus_di        = indicators.get("minus_di", 25.0)
+        atr_ratio       = indicators.get("atr_ratio", 1.0)
+        obv_trend       = indicators.get("obv_trend", 0.0)
+        bb_width        = indicators.get("bb_width", 0.0)
 
-        confidence = 0.5  # Neutral baseline
+        confidence = 0.5  # neutral baseline
 
-        # Step 1: Check ADX for trend strength
-        if adx > 25:
-            # Potentially trending
-            if plus_di > minus_di and rsi > 50:
-                regime_type = "bull-trending"
-                # Confidence boosts for strong bull signals
-                if adx > 30:
-                    confidence += 0.12
-                if rsi >= 55 and rsi <= 70:
-                    confidence += 0.10
-                if macd_hist > 0:
-                    confidence += 0.08
-                if bb_pct_b > 0.8:
-                    confidence += 0.08
-                if close > ma_20:
-                    confidence += 0.06
-                if obv_trend > 0.3:
-                    confidence += 0.05
-                # Contradictions
-                if rsi > 75:
-                    confidence -= 0.08  # Overbought
-                if macd_hist < 0:
-                    confidence -= 0.10
+        # ── Step 1: volatility override ──────────────────────────────────────
+        if atr_ratio > 2.0:
+            regime_type = "high-volatility"
+            confidence = 0.5 + min((atr_ratio - 2.0) * 0.12, 0.30)
+            return regime_type, max(0.0, min(1.0, confidence))
 
-            elif minus_di > plus_di and rsi < 50:
-                regime_type = "bear-trending"
-                # Confidence boosts for strong bear signals
-                if adx > 30:
-                    confidence += 0.12
-                if rsi >= 30 and rsi <= 45:
-                    confidence += 0.10
-                if macd_hist < 0:
-                    confidence += 0.08
-                if bb_pct_b < 0.2:
-                    confidence += 0.08
-                if close < ma_20:
-                    confidence += 0.06
-                if obv_trend < -0.3:
-                    confidence += 0.05
-                # Contradictions
-                if rsi < 25:
-                    confidence -= 0.08  # Oversold
-                if macd_hist > 0:
-                    confidence -= 0.10
+        if atr_ratio < 0.5:
+            regime_type = "low-volatility"
+            confidence = 0.5 + min((0.5 - atr_ratio) * 0.25, 0.25)
+            return regime_type, max(0.0, min(1.0, confidence))
 
+        # ── Step 2: Ichimoku cloud position ──────────────────────────────────
+        if price_vs_cloud == 0.0:
+            # Price is inside the cloud — market is ranging/transitioning
+            if bb_width < 0.015:
+                regime_type = "ranging"
+                confidence = 0.58
             else:
-                # Mixed DI signals with high ADX
+                regime_type = "transitioning"
+                confidence = 0.38
+            return regime_type, max(0.0, min(1.0, confidence))
+
+        # ── Step 3: Price above cloud (bullish territory) ────────────────────
+        if price_vs_cloud > 0:
+            if cloud_bullish > 0:
+                # Bullish cloud: Span A > Span B
+                regime_type = "bull-trending"
+                confidence = 0.55
+                # Boosts
+                if tenkan > kijun:
+                    confidence += 0.12   # TK bullish alignment
+                if tk_cross > 0:
+                    confidence += 0.08   # Recent bullish TK cross
+                if adx > 25:
+                    confidence += 0.08   # Trend confirmed by ADX
+                if adx > 30:
+                    confidence += 0.05
+                if plus_di > minus_di:
+                    confidence += 0.05
+                if obv_trend > 0.3:
+                    confidence += 0.04
+                # Contradictions
+                if tenkan < kijun:
+                    confidence -= 0.10   # Bearish TK despite bullish cloud
+                if tk_cross < 0:
+                    confidence -= 0.08   # Recent bearish cross — possibly transitioning
+            else:
+                # Bearish cloud above price — unusual, likely transitioning
                 regime_type = "transitioning"
                 confidence = 0.35
+            return regime_type, max(0.0, min(1.0, confidence))
 
-        elif adx >= 20:
-            # Weak trend — likely transitioning
-            regime_type = "transitioning"
-            confidence = 0.4 + (25 - adx) * 0.005  # Slightly higher confidence near ADX=20
-
+        # ── Step 4: Price below cloud (bearish territory) ────────────────────
+        if cloud_bullish <= 0:
+            # Bearish cloud: Span A < Span B
+            regime_type = "bear-trending"
+            confidence = 0.55
+            # Boosts
+            if tenkan < kijun:
+                confidence += 0.12
+            if tk_cross < 0:
+                confidence += 0.08
+            if adx > 25:
+                confidence += 0.08
+            if adx > 30:
+                confidence += 0.05
+            if minus_di > plus_di:
+                confidence += 0.05
+            if obv_trend < -0.3:
+                confidence += 0.04
+            # Contradictions
+            if tenkan > kijun:
+                confidence -= 0.10
+            if tk_cross > 0:
+                confidence -= 0.08
         else:
-            # ADX < 20 — non-trending
-            if atr_ratio > 2.0:
-                regime_type = "high-volatility"
-                confidence = 0.5 + min((atr_ratio - 2.0) * 0.1, 0.3)
-                if bb_width > 0:
-                    confidence += 0.08
-            elif atr_ratio < 0.5:
-                regime_type = "low-volatility"
-                confidence = 0.5 + min((0.5 - atr_ratio) * 0.2, 0.25)
-                if bb_width < 0.01:
-                    confidence += 0.08
-            else:
-                regime_type = "ranging"
-                confidence = 0.55
-                # Strong ranging signals
-                if rsi >= 40 and rsi <= 60:
-                    confidence += 0.08
-                if abs(bb_pct_b - 0.5) < 0.2:
-                    confidence += 0.05
-                if abs(macd_hist) < 0.001:
-                    confidence += 0.05
+            # Bullish cloud below price — possible bottoming / transitioning
+            regime_type = "transitioning"
+            confidence = 0.38
 
-        # Clamp confidence to [0.0, 1.0]
         confidence = max(0.0, min(1.0, confidence))
         return regime_type, confidence
 
@@ -272,40 +287,67 @@ class MarketAnalystAgent(BaseAgent):
     # Indicator computation helpers
     # -------------------------------------------------------------------------
 
-    def _compute_rsi(self, close: np.ndarray, period: int = 14) -> float:
-        """Compute RSI for the most recent period."""
-        if len(close) < period + 1:
-            return 50.0
-        delta = np.diff(close)
-        gains = np.where(delta > 0, delta, 0.0)
-        losses = np.where(delta < 0, -delta, 0.0)
-        avg_gain = np.mean(gains[-period:])
-        avg_loss = np.mean(losses[-period:])
-        if avg_loss == 0:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
+    def _compute_ichimoku(
+        self, high: np.ndarray, low: np.ndarray, close: np.ndarray
+    ) -> Dict[str, float]:
+        """Compute Ichimoku Kinko Hyo values for the most recent bar.
 
-    def _compute_macd(
-        self, close: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9
-    ) -> tuple[float, float, float]:
-        """Compute MACD, signal line, and histogram."""
-        if len(close) < slow:
-            return 0.0, 0.0, 0.0
-        ema_fast = self._ema(close, fast)
-        ema_slow = self._ema(close, slow)
-        macd_line = ema_fast - ema_slow
-        # For signal, we need a series of MACD values
-        macd_series = np.array([
-            self._ema(close[:i], fast) - self._ema(close[:i], slow)
-            for i in range(slow, len(close) + 1)
-        ])
-        if len(macd_series) < signal:
-            signal_line = macd_series[-1] if len(macd_series) > 0 else 0.0
+        Lines:
+            Tenkan-sen  (9-period midprice)
+            Kijun-sen   (26-period midprice)
+            Senkou Span A = (tenkan + kijun) / 2
+            Senkou Span B = 52-period midprice
+
+        Returns dict with tenkan, kijun, span_a, span_b, cloud_top, cloud_bot,
+        price_vs_cloud (+1/0/-1), tk_cross (+1/-1/0), cloud_bullish (1/0).
+        """
+        def midprice(period: int) -> float:
+            if len(high) < period:
+                return float(close[-1])
+            return (float(np.max(high[-period:])) + float(np.min(low[-period:]))) / 2.0
+
+        tenkan = midprice(9)
+        kijun  = midprice(26)
+        span_a = (tenkan + kijun) / 2.0
+        span_b = midprice(52)
+
+        cloud_top = max(span_a, span_b)
+        cloud_bot = min(span_a, span_b)
+        price = float(close[-1])
+
+        if price > cloud_top:
+            price_vs_cloud = 1.0
+        elif price < cloud_bot:
+            price_vs_cloud = -1.0
         else:
-            signal_line = self._ema(macd_series, signal)
-        histogram = macd_line - signal_line
-        return float(macd_line), float(signal_line), float(histogram)
+            price_vs_cloud = 0.0
+
+        # TK cross: compare current and previous bar
+        if len(high) >= 10:
+            prev_tenkan = (float(np.max(high[-10:-1])) + float(np.min(low[-10:-1]))) / 2.0
+            prev_kijun  = midprice(26)   # kijun changes slowly; use same value as proxy
+            prev_above = prev_tenkan > prev_kijun
+            curr_above = tenkan > kijun
+            if curr_above and not prev_above:
+                tk_cross = 1.0   # bullish cross
+            elif not curr_above and prev_above:
+                tk_cross = -1.0  # bearish cross
+            else:
+                tk_cross = 0.0
+        else:
+            tk_cross = 0.0
+
+        return {
+            "tenkan":         tenkan,
+            "kijun":          kijun,
+            "span_a":         span_a,
+            "span_b":         span_b,
+            "cloud_top":      cloud_top,
+            "cloud_bot":      cloud_bot,
+            "price_vs_cloud": price_vs_cloud,
+            "tk_cross":       tk_cross,
+            "cloud_bullish":  1.0 if span_a > span_b else 0.0,
+        }
 
     def _compute_bollinger(
         self, close: np.ndarray, period: int = 20, num_std: float = 2.0

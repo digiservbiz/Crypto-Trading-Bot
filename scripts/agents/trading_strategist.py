@@ -326,20 +326,40 @@ class TradingStrategistAgent(BaseAgent):
         indicators: Dict[str, float],
         regime_verdict: RegimeVerdict,
     ) -> tuple[Optional[str], float]:
-        """Momentum strategy: MACD crossover + RSI confirmation."""
-        rsi = indicators.get("rsi", 50.0)
-        macd_hist = indicators.get("macd_hist", 0.0)
-        regime = regime_verdict.regime_type
+        """Momentum strategy: Ichimoku TK cross + cloud position confirmation.
 
-        if regime == "bull-trending":
-            # Long signal: MACD positive + RSI in 45–75
-            if macd_hist > 0 and 45 <= rsi <= 75:
-                strength = min(1.0, abs(macd_hist) * 100 + (rsi - 45) / 30)
+        Signal rules:
+          BUY  — bull-trending regime, price above cloud, tenkan > kijun
+                 Strongest when a bullish TK cross just occurred (tk_cross == +1)
+          SELL — bear-trending regime, price below cloud, tenkan < kijun
+                 Strongest when a bearish TK cross just occurred (tk_cross == -1)
+        """
+        tenkan          = indicators.get("tenkan", 0.0)
+        kijun           = indicators.get("kijun", 0.0)
+        tk_cross        = indicators.get("tk_cross", 0.0)
+        price_vs_cloud  = indicators.get("price_vs_cloud", 0.0)
+        cloud_bullish   = indicators.get("cloud_bullish", 0.0)
+        regime          = regime_verdict.regime_type
+
+        if regime == "bull-trending" and price_vs_cloud > 0:
+            if tenkan > kijun:
+                # Base strength from tenkan-kijun gap (normalized by kijun)
+                gap_pct = (tenkan - kijun) / kijun if kijun > 0 else 0.0
+                strength = min(1.0, 0.5 + gap_pct * 10)
+                if tk_cross > 0:
+                    strength = min(1.0, strength + 0.20)  # boost on fresh cross
+                if cloud_bullish > 0:
+                    strength = min(1.0, strength + 0.10)  # bullish cloud confirms
                 return "buy", float(strength)
-        elif regime == "bear-trending":
-            # Short signal: MACD negative + RSI in 25–55
-            if macd_hist < 0 and 25 <= rsi <= 55:
-                strength = min(1.0, abs(macd_hist) * 100 + (55 - rsi) / 30)
+
+        elif regime == "bear-trending" and price_vs_cloud < 0:
+            if tenkan < kijun:
+                gap_pct = (kijun - tenkan) / kijun if kijun > 0 else 0.0
+                strength = min(1.0, 0.5 + gap_pct * 10)
+                if tk_cross < 0:
+                    strength = min(1.0, strength + 0.20)
+                if cloud_bullish <= 0:
+                    strength = min(1.0, strength + 0.10)  # bearish cloud confirms
                 return "sell", float(strength)
 
         return None, 0.0
@@ -349,29 +369,38 @@ class TradingStrategistAgent(BaseAgent):
         close: np.ndarray,
         indicators: Dict[str, float],
     ) -> tuple[Optional[str], float]:
-        """Mean-reversion strategy: Bollinger Band boundary + Z-score."""
+        """Mean-reversion strategy: Kijun-sen support/resistance + Bollinger Bands.
+
+        In a ranging market the Kijun-sen (26-period midprice) acts as a
+        magnetic equilibrium line — price tends to revert to it.
+        Bollinger Band extremes provide the secondary trigger.
+        """
+        kijun    = indicators.get("kijun", 0.0)
         bb_pct_b = indicators.get("bb_pct_b", 0.5)
-        bb_upper = indicators.get("bb_upper", 0.0)
-        bb_lower = indicators.get("bb_lower", 0.0)
-        current = float(close[-1]) if len(close) > 0 else 0.0
+        current  = float(close[-1]) if len(close) > 0 else 0.0
 
-        if bb_lower == 0:
-            return None, 0.0
+        # ── Primary: Kijun-based reversion ───────────────────────────────────
+        if kijun > 0:
+            kijun_deviation = (current - kijun) / kijun
+            if kijun_deviation < -0.012:   # price > 1.2% below kijun — buy bounce
+                strength = min(1.0, abs(kijun_deviation) * 30 + 0.4)
+                return "buy", float(strength)
+            if kijun_deviation > 0.012:    # price > 1.2% above kijun — sell pullback
+                strength = min(1.0, abs(kijun_deviation) * 30 + 0.4)
+                return "sell", float(strength)
 
-        # Buy at lower band
+        # ── Secondary: Bollinger Band extremes ───────────────────────────────
         if bb_pct_b < 0.05:
             strength = min(1.0, (0.05 - bb_pct_b) * 20 + 0.5)
             return "buy", float(strength)
-
-        # Sell at upper band
         if bb_pct_b > 0.95:
             strength = min(1.0, (bb_pct_b - 0.95) * 20 + 0.5)
             return "sell", float(strength)
 
-        # Z-score confirmation
+        # ── Z-score confirmation ──────────────────────────────────────────────
         if len(close) >= 20:
             mean_20 = np.mean(close[-20:])
-            std_20 = np.std(close[-20:], ddof=1)
+            std_20  = np.std(close[-20:], ddof=1)
             if std_20 > 0:
                 z = (current - mean_20) / std_20
                 if z > 2.0:

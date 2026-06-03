@@ -93,14 +93,25 @@ def _is_running() -> bool:
     return not os.path.exists(BOT_STOP_FILE)
 
 
+def _ichimoku_midprice(high: pd.Series, low: pd.Series, period: int) -> pd.Series:
+    """(highest high + lowest low) / 2 over `period` bars — the core Ichimoku line."""
+    return (high.rolling(period).max() + low.rolling(period).min()) / 2
+
+
 def _add_indicators(df: pd.DataFrame) -> None:
     """Add technical indicators to OHLCV DataFrame using pure pandas/numpy.
 
-    Replaces pandas-ta dependency. Appends columns in-place:
-        MACD_12_26_9, MACDs_12_26_9, MACDh_12_26_9
-        RSI_14
+    Primary: Ichimoku Kinko Hyo (replaces RSI/MACD as the main signal source)
+        ICH_tenkan  — Conversion Line  (9-period midprice)
+        ICH_kijun   — Base Line        (26-period midprice)
+        ICH_span_a  — Senkou Span A    (tenkan+kijun)/2, leading 26 bars
+        ICH_span_b  — Senkou Span B    (52-period midprice), leading 26 bars
+        ICH_cloud_top / ICH_cloud_bot  — current cloud boundaries (shifted)
+        ICH_tk_cross — +1 bullish TK cross, -1 bearish TK cross, 0 none
+
+    Supporting (kept for volatility sizing and mean-reversion):
         BBL_20_2.0, BBM_20_2.0, BBU_20_2.0
-        ATRr_14  (ATR ratio vs 20-bar average)
+        ATRr_14
         OBV
 
     Args:
@@ -111,32 +122,33 @@ def _add_indicators(df: pd.DataFrame) -> None:
     low = df["low"]
     volume = df["volume"]
 
-    # --- MACD (12, 26, 9) ---
-    ema12 = close.ewm(span=12, adjust=False).mean()
-    ema26 = close.ewm(span=26, adjust=False).mean()
-    macd_line = ema12 - ema26
-    signal_line = macd_line.ewm(span=9, adjust=False).mean()
-    df["MACD_12_26_9"] = macd_line
-    df["MACDs_12_26_9"] = signal_line
-    df["MACDh_12_26_9"] = macd_line - signal_line
+    # --- Ichimoku Kinko Hyo ---
+    tenkan = _ichimoku_midprice(high, low, 9)
+    kijun  = _ichimoku_midprice(high, low, 26)
+    span_a = (tenkan + kijun) / 2
+    span_b = _ichimoku_midprice(high, low, 52)
 
-    # --- RSI (14) ---
-    delta = close.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(14).mean()
-    avg_loss = loss.rolling(14).mean()
-    rs = avg_gain / avg_loss.replace(0, float("nan"))
-    df["RSI_14"] = 100 - (100 / (1 + rs))
+    df["ICH_tenkan"] = tenkan
+    df["ICH_kijun"]  = kijun
+    # Leading spans shifted 26 bars forward (standard Ichimoku projection)
+    df["ICH_span_a"] = span_a.shift(26)
+    df["ICH_span_b"] = span_b.shift(26)
+    # Current cloud = the spans that were projected 26 bars ago → shift(-26) of the shifted series
+    # Equivalently: unshifted span_a/span_b are the "current applicable cloud"
+    df["ICH_cloud_top"] = span_a.combine(span_b, max)
+    df["ICH_cloud_bot"] = span_a.combine(span_b, min)
+    # TK cross: +1 when tenkan crosses above kijun, -1 when crosses below
+    tk_above = (tenkan > kijun).astype(int)
+    df["ICH_tk_cross"] = tk_above.diff().fillna(0)
 
-    # --- Bollinger Bands (20, 2) ---
+    # --- Bollinger Bands (20, 2) — kept for mean-reversion ranging strategy ---
     bb_mid = close.rolling(20).mean()
     bb_std = close.rolling(20).std(ddof=1)
     df["BBL_20_2.0"] = bb_mid - 2 * bb_std
     df["BBM_20_2.0"] = bb_mid
     df["BBU_20_2.0"] = bb_mid + 2 * bb_std
 
-    # --- ATR (14) ---
+    # --- ATR (14) — kept for volatility-based position sizing ---
     tr = pd.concat([
         high - low,
         (high - close.shift()).abs(),
@@ -146,7 +158,7 @@ def _add_indicators(df: pd.DataFrame) -> None:
     atr_20 = tr.rolling(20).mean()
     df["ATRr_14"] = atr / atr_20.replace(0, float("nan"))
 
-    # --- OBV ---
+    # --- OBV — kept for volume-trend confirmation ---
     direction = np.sign(close.diff()).fillna(0)
     df["OBV"] = (direction * volume).cumsum()
 
@@ -565,12 +577,13 @@ def run_bot(config: Dict[str, Any]) -> None:
 
     symbols = config["data"]["symbols"]
     dry_run = config.get("dry_run", True)
-    # Column names match _add_indicators() output (pure pandas/numpy, period=20 BB)
+    # Column names match _add_indicators() — Ichimoku primary, BB+ATR+OBV supporting
     features = [
         "close", "volume", "volatility",
-        "MACD_12_26_9", "RSI_14",
+        "ICH_tenkan", "ICH_kijun", "ICH_span_a", "ICH_span_b",
+        "ICH_cloud_top", "ICH_cloud_bot", "ICH_tk_cross",
         "BBL_20_2.0", "BBM_20_2.0", "BBU_20_2.0",
-        "ATRr_14", "OBV"
+        "ATRr_14", "OBV",
     ]
 
     # ---- Per-symbol state ----

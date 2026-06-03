@@ -10,28 +10,38 @@ import yaml
 import os
 
 
+def _ichimoku_midprice(high: pd.Series, low: pd.Series, period: int) -> pd.Series:
+    return (high.rolling(period).max() + low.rolling(period).min()) / 2
+
+
 def _add_indicators_sequential(df: pd.DataFrame) -> None:
-    """Add technical indicators using pure pandas/numpy — no pandas-ta required.
+    """Add Ichimoku + supporting indicators — pure pandas/numpy, no pandas-ta.
 
     Appends columns in-place:
-        MACD_12_26_9, RSI_14, BBL_20_2.0, BBM_20_2.0, BBU_20_2.0
+        ICH_tenkan, ICH_kijun, ICH_span_a, ICH_span_b,
+        ICH_cloud_top, ICH_cloud_bot, ICH_tk_cross,
+        BBL_20_2.0, BBM_20_2.0, BBU_20_2.0
     """
     close = df["close"]
+    high  = df["high"]
+    low   = df["low"]
 
-    # MACD (12, 26, 9)
-    ema12 = close.ewm(span=12, adjust=False).mean()
-    ema26 = close.ewm(span=26, adjust=False).mean()
-    macd_line = ema12 - ema26
-    df["MACD_12_26_9"] = macd_line
+    # Ichimoku Kinko Hyo
+    tenkan = _ichimoku_midprice(high, low, 9)
+    kijun  = _ichimoku_midprice(high, low, 26)
+    span_a = (tenkan + kijun) / 2
+    span_b = _ichimoku_midprice(high, low, 52)
 
-    # RSI (14)
-    delta = close.diff()
-    avg_gain = delta.clip(lower=0).rolling(14).mean()
-    avg_loss = (-delta.clip(upper=0)).rolling(14).mean()
-    rs = avg_gain / avg_loss.replace(0, float("nan"))
-    df["RSI_14"] = 100 - (100 / (1 + rs))
+    df["ICH_tenkan"]    = tenkan
+    df["ICH_kijun"]     = kijun
+    df["ICH_span_a"]    = span_a.shift(26)
+    df["ICH_span_b"]    = span_b.shift(26)
+    df["ICH_cloud_top"] = span_a.combine(span_b, max)
+    df["ICH_cloud_bot"] = span_a.combine(span_b, min)
+    tk_above = (tenkan > kijun).astype(int)
+    df["ICH_tk_cross"]  = tk_above.diff().fillna(0)
 
-    # Bollinger Bands (20, 2)
+    # Bollinger Bands (20, 2) — kept for mean-reversion
     bb_mid = close.rolling(20).mean()
     bb_std = close.rolling(20).std(ddof=1)
     df["BBL_20_2.0"] = bb_mid - 2 * bb_std
@@ -64,7 +74,12 @@ class CryptoDataModule(pl.LightningDataModule):
 
         # Create sequences
         X, y = [], []
-        self.features = ['close', 'volume', 'volatility', 'MACD_12_26_9', 'RSI_14', 'BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0']
+        self.features = [
+            'close', 'volume', 'volatility',
+            'ICH_tenkan', 'ICH_kijun', 'ICH_span_a', 'ICH_span_b',
+            'ICH_cloud_top', 'ICH_cloud_bot', 'ICH_tk_cross',
+            'BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0',
+        ]
         for i in range(self.config['data']['lookback'], len(df) - 1):
             X.append(df.iloc[i-self.config['data']['lookback']:i][self.features].values)
             y.append(df['returns'].iloc[i+1] > 0)  # Binary classification
