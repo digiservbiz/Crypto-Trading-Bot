@@ -31,6 +31,7 @@ try:
 except ImportError:
     _PLOTLY = False
 from prometheus_client import start_http_server
+from scripts.market_selection import configured_symbols
 
 # ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -538,8 +539,16 @@ with tab_overview:
 
     # ── Live Ichimoku Chart ──────────────────────────────────────────────────
     st.subheader("📈 Live Price Chart — Ichimoku Kinko Hyo")
-    symbols_config = _load_config().get("data", {}).get("symbols", ["BTC/USDT"])
-    chart_symbol = st.selectbox("Symbol", symbols_config, key="chart_symbol")
+    try:
+        symbols_config = configured_symbols(_load_config())
+    except ValueError as exc:
+        st.error(f"Invalid market configuration: {exc}")
+        symbols_config = ["BTC/USDT"]
+    chart_symbol = st.selectbox(
+        "Market", symbols_config, key="chart_symbol",
+        help="Select the configured market to inspect. This selector does not bypass risk controls."
+    )
+    st.caption(f"Configured markets: {len(symbols_config)} · Selected: {chart_symbol}")
     chart_df = _load_chart_data(chart_symbol)
     if chart_df is not None and _PLOTLY:
         fig = _ichimoku_chart(chart_df, chart_symbol)
