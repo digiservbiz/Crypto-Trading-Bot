@@ -40,3 +40,23 @@ Tests are authored but have not been executed successfully in the current engine
 
 ## Rule
 Update this file after each meaningful implementation, validation, or architectural milestone.
+
+
+## 2026-10-02 — Restart Recovery Foundation
+
+### Milestone
+Added the first conservative foundation for recovering exchange-backed positions after a process restart.
+
+### Work completed
+- Created `scripts/position_recovery.py`.
+- Added strict normalization for long/short positions.
+- Zero-sized, malformed, and unsupported position records are ignored.
+- Added optional entry-price normalization.
+- Added `recover_positions()`, which uses exchange `fetch_positions` when available and fails closed when it is unavailable or errors.
+- Created `tests/test_position_recovery.py`.
+
+### Important engineering note
+This is a recovery foundation, not yet startup integration. The bot must still reconcile recovered exchange positions before resuming automated trading.
+
+### Next target
+Integrate recovery into startup, then add duplicate-order/idempotency protection and harden the emergency stop path.
