@@ -92,3 +92,15 @@ Added a fail-closed emergency kill-switch primitive backed by the existing stop-
 
 ### Integration status
 The primitive is ready for integration into startup and the entry-order boundary. Existing bot stop-sentinel behavior remains separate until the live execution path is safely refactored.
+
+
+## 2026-10-02 — Exchange Recovery Test Coverage
+
+### Milestone
+Expanded restart-recovery tests to exercise an exchange-backed position snapshot and a failed exchange position query.
+
+### Result
+Recovery remains conservative: valid exchange positions can be normalized, while an exchange query failure returns no invented local positions.
+
+### Integration status
+Startup wiring is still intentionally pending. The bot must reconcile exchange state before resuming entries rather than silently reconstructing positions from stale in-memory state.
