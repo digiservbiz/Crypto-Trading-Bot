@@ -4,7 +4,7 @@
 
 ## Current Status
 
-- **Overall engineering progress:** 80%
+- **Overall engineering progress:** 90%
 - **Current phase:** Phase 3 — Execution Safety & Reliability Hardening
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
@@ -20,12 +20,12 @@
 | 2. Security/risk/execution audit | Complete | 100% |
 | 3. Execution safety hardening | In progress | 65% |
 | 4. Order reconciliation & failure handling | In progress | 75% |
-| 5. Restart/position recovery | In progress | 30% |
-| 6. Kill switch / emergency controls | In progress | 20% |
+| 5. Restart/position recovery | In progress | 60% |
+| 6. Kill switch / emergency controls | In progress | 35% |
 | 7. Testnet/paper-trading validation | Planned | 10% |
-| 8. Full automated test coverage & CI | In progress | 20% |
-| 9. Deployment hardening | In progress | 35% |
-| 10. Final production-readiness review | In progress | 10% |
+| 8. Full automated test coverage & CI | In progress | 30% |
+| 9. Deployment hardening | In progress | 50% |
+| 10. Final production-readiness review | In progress | 25% |
 
 ## Completed in Current Hardening Branch
 
@@ -39,6 +39,7 @@
 - Added conservative restart position normalization/recovery helpers and tests.
 - Added controlled deployment release gates and operator checklist.
 - Added deployment hardening checklist and structured validation evidence template.
+- Added startup recovery regression tests and a final release-gate specification.
 
 ## Known Remaining Critical Work
 
