@@ -4,7 +4,7 @@
 
 ## Current Status
 
-- **Overall engineering progress:** 35%
+- **Overall engineering progress:** 40%
 - **Current phase:** Phase 3 — Execution Safety & Reliability Hardening
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
@@ -20,7 +20,7 @@
 | 2. Security/risk/execution audit | Complete | 100% |
 | 3. Execution safety hardening | In progress | 60% |
 | 4. Order reconciliation & failure handling | In progress | 40% |
-| 5. Restart/position recovery | Planned | 0% |
+| 5. Restart/position recovery | In progress | 20% |
 | 6. Kill switch / emergency controls | Planned | 0% |
 | 7. Testnet/paper-trading validation | Planned | 0% |
 | 8. Full automated test coverage & CI | Planned | 0% |
@@ -36,6 +36,7 @@
 - Added order reconciliation helpers for filled, open, partial, cancelled, and unknown order states.
 - Added unit tests for the new safety/reconciliation modules.
 - Added `SECURITY.md` with responsible-disclosure and live-trading safety guidance.
+- Added conservative restart position normalization/recovery helpers and tests.
 
 ## Known Remaining Critical Work
 
