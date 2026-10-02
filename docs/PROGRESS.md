@@ -192,3 +192,13 @@ The adapter is intentionally standalone because the repository safety controls p
 - Updated the Streamlit live chart to use the validated configured market list and show the selected market clearly.
 - Existing bot architecture already iterates over the configured `data.symbols` list, so the expanded universe is consumed by the per-symbol analysis loop.
 - This milestone does not authorize live trading on every configured market; exchange availability, liquidity, sizing, and risk validation still govern deployment.
+
+
+## 2026-10-03 — Exchange Market Preflight
+
+- Added `scripts/market_eligibility.py` to validate configured pairs against authoritative exchange market metadata.
+- Added active-market and spot/futures eligibility checks without placing orders.
+- Added `scripts/exchange_preflight.py` and regression tests for read-only preflight behavior.
+- Added `Exchange.load_markets()` as a read-only wrapper around CCXT market discovery.
+- Made `execution.market_mode` explicit in `config.yaml` (default: spot).
+- Validation preparation advances from 20% to 30% based on completed artifacts only; actual exchange/testnet execution remains unverified.
