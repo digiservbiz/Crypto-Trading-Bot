@@ -175,3 +175,10 @@ Added deployment-hardening controls and a structured validation-evidence templat
 
 ### Status
 These artifacts make release verification reproducible, but they are not evidence that the controls have passed. Test execution, live-path integration, and testnet validation remain required.
+
+
+## Next step — Controlled execution boundary
+
+Added `scripts/controlled_executor.py` and regression tests. The adapter composes final execution safety, kill-switch enforcement, durable execution-key claims, broker submission, and conservative order-outcome classification. Ambiguous broker outcomes are retained as unresolved and are not retried automatically.
+
+The adapter is intentionally standalone because the repository safety controls previously blocked direct rewriting of the existing live-order path. Integration into the production bot and actual testnet execution remain separate validation gates.
