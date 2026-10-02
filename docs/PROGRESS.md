@@ -202,3 +202,12 @@ The adapter is intentionally standalone because the repository safety controls p
 - Added `Exchange.load_markets()` as a read-only wrapper around CCXT market discovery.
 - Made `execution.market_mode` explicit in `config.yaml` (default: spot).
 - Validation preparation advances from 20% to 30% based on completed artifacts only; actual exchange/testnet execution remains unverified.
+
+
+## 2026-10-03 — Controlled Validation Preflight Gate
+
+- Added fail-closed validation configuration checks requiring sandbox/testnet mode.
+- Added explicit market-mode validation and non-empty market-universe requirements.
+- Added regression tests for the validation gate.
+- Added a read-only testnet preflight document covering exchange-market eligibility and operational safety.
+- Controlled validation preparation advances to 50% based on completed engineering artifacts; no testnet execution is claimed.
