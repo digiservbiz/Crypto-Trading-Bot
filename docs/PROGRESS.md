@@ -78,3 +78,17 @@ The key generator is ready, but persistent duplicate-order checking still needs 
 
 ### Current blocker
 The actual `execute_trade()` path still requires the final execution-safety gate and reconciliation integration before funded trading can be considered.
+
+
+## 2026-10-02 — Kill Switch Foundation
+
+### Milestone
+Added a fail-closed emergency kill-switch primitive backed by the existing stop-sentinel path.
+
+### Work completed
+- Created `scripts/kill_switch.py`.
+- Added activation, clearing, status, and fail-closed enforcement.
+- Added `tests/test_kill_switch.py`.
+
+### Integration status
+The primitive is ready for integration into startup and the entry-order boundary. Existing bot stop-sentinel behavior remains separate until the live execution path is safely refactored.
