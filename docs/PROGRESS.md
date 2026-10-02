@@ -182,3 +182,13 @@ These artifacts make release verification reproducible, but they are not evidenc
 Added `scripts/controlled_executor.py` and regression tests. The adapter composes final execution safety, kill-switch enforcement, durable execution-key claims, broker submission, and conservative order-outcome classification. Ambiguous broker outcomes are retained as unresolved and are not retried automatically.
 
 The adapter is intentionally standalone because the repository safety controls previously blocked direct rewriting of the existing live-order path. Integration into the production bot and actual testnet execution remain separate validation gates.
+
+
+## Multi-pair support + dashboard market selector
+
+- Added validated multi-market configuration helpers in `scripts/market_selection.py`.
+- Added regression coverage for normalization, de-duplication, and invalid symbols.
+- Expanded the default configured market universe to BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT, ADA/USDT, and DOGE/USDT.
+- Updated the Streamlit live chart to use the validated configured market list and show the selected market clearly.
+- Existing bot architecture already iterates over the configured `data.symbols` list, so the expanded universe is consumed by the per-symbol analysis loop.
+- This milestone does not authorize live trading on every configured market; exchange availability, liquidity, sizing, and risk validation still govern deployment.
