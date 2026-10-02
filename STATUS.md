@@ -9,7 +9,7 @@
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
-- **Controlled validation preparation:** 30%
+- **Controlled validation preparation:** 50%
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
@@ -52,6 +52,13 @@
 - Added read-only exchange market eligibility checks against authoritative CCXT `load_markets()` metadata.
 - Added explicit spot/futures market-mode handling and configuration (`execution.market_mode`).
 - Added exchange preflight primitives and regression tests; no order submission is performed.
+
+### Validation preparation — 50%
+
+- Added a fail-closed configuration guard requiring sandbox/testnet mode for controlled validation.
+- Added explicit validation checks for market mode and non-empty configured market universe.
+- Added a read-only testnet preflight checklist covering market eligibility and secret handling.
+- Actual exchange connectivity, order scenarios, reconciliation, restart, and full-suite execution remain evidence gates.
 
 ### 100% engineering-hardening milestone
 All planned hardening primitives and their regression-test artifacts are now represented on the hardening branch. This does NOT mean test execution, testnet evidence, or funded-live readiness has been verified.
