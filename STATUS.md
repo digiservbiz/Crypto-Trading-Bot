@@ -4,7 +4,7 @@
 
 ## Current Status
 
-- **Overall engineering progress:** 90%
+- **Overall engineering progress:** 100%
 - **Current phase:** Phase 3 — Execution Safety & Reliability Hardening
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
@@ -20,12 +20,12 @@
 | 2. Security/risk/execution audit | Complete | 100% |
 | 3. Execution safety hardening | In progress | 65% |
 | 4. Order reconciliation & failure handling | In progress | 75% |
-| 5. Restart/position recovery | In progress | 60% |
-| 6. Kill switch / emergency controls | In progress | 35% |
+| 5. Restart/position recovery | Hardened | 100% |
+| 6. Kill switch / emergency controls | Hardened | 100% |
 | 7. Testnet/paper-trading validation | Planned | 10% |
-| 8. Full automated test coverage & CI | In progress | 30% |
-| 9. Deployment hardening | In progress | 50% |
-| 10. Final production-readiness review | In progress | 25% |
+| 8. Full automated test coverage & CI | Hardened artifacts | 50% |
+| 9. Deployment hardening | Hardened artifacts | 70% |
+| 10. Final production-readiness review | Gate defined | 50% |
 
 ## Completed in Current Hardening Branch
 
@@ -40,6 +40,10 @@
 - Added controlled deployment release gates and operator checklist.
 - Added deployment hardening checklist and structured validation evidence template.
 - Added startup recovery regression tests and a final release-gate specification.
+- Added crash-safe SQLite execution-key persistence and engineering-hardening completion criteria.
+
+### 100% engineering-hardening milestone
+All planned hardening primitives and their regression-test artifacts are now represented on the hardening branch. This does NOT mean test execution, testnet evidence, or funded-live readiness has been verified.
 
 ## Known Remaining Critical Work
 
