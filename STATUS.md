@@ -5,7 +5,7 @@
 ## Current Status
 
 - **Overall engineering progress:** 100%
-- **Current phase:** Phase 3 — Execution Safety & Reliability Hardening
+- **Current phase:** Phase 3 — Execution Safety & Reliability Hardening + Phase 7 controlled validation preparation
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
@@ -22,7 +22,7 @@
 | 4. Order reconciliation & failure handling | In progress | 75% |
 | 5. Restart/position recovery | Hardened | 100% |
 | 6. Kill switch / emergency controls | Hardened | 100% |
-| 7. Testnet/paper-trading validation | Planned | 10% |
+| 7. Testnet/paper-trading validation | Preparation | 20% |
 | 8. Full automated test coverage & CI | Hardened artifacts | 50% |
 | 9. Deployment hardening | Hardened artifacts | 70% |
 | 10. Final production-readiness review | Gate defined | 50% |
@@ -42,6 +42,9 @@
 - Added startup recovery regression tests and a final release-gate specification.
 - Added crash-safe SQLite execution-key persistence and engineering-hardening completion criteria.
 - Added a standalone controlled broker execution boundary with integrated safety, kill-switch, durable idempotency, and reconciliation behavior.
+- Added validated multi-pair configuration and a seven-market default universe.
+- Added a multi-market dashboard cockpit with per-market price, regime, confidence, and position/P&L cards.
+- Added dashboard market selection backed by validated configuration.
 
 ### 100% engineering-hardening milestone
 All planned hardening primitives and their regression-test artifacts are now represented on the hardening branch. This does NOT mean test execution, testnet evidence, or funded-live readiness has been verified.
