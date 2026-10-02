@@ -148,3 +148,12 @@ Added a standalone execution configuration validator with conservative limits fo
 
 ### Status
 This is a validation primitive, not automatic live-mode wiring. Repository tests still require execution in a working test/CI environment before being marked passed.
+
+
+## 2026-10-03 — Defensive Order Data Validation
+
+### Milestone
+Added a defensive reconciliation wrapper that rejects non-finite, negative, or otherwise invalid broker quantity data before it can influence local execution state.
+
+### Status
+This hardens the reconciliation layer but does not replace the existing broker integration. Full integration and test execution remain outstanding release gates.
