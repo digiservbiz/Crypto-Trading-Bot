@@ -73,6 +73,10 @@ class Exchange:
             logger.error("Error connecting to exchange %s: %s", exchange_name, exc)
             raise
 
+    def load_markets(self) -> dict:
+        """Load authoritative exchange market metadata without submitting orders."""
+        return self.exchange.load_markets()
+
     def get_balance(self, currency: str) -> dict:
         """Fetch current balance for a currency.
 
