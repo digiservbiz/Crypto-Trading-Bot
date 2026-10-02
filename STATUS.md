@@ -4,7 +4,7 @@
 
 ## Current Status
 
-- **Overall engineering progress:** 48%
+- **Overall engineering progress:** 49%
 - **Current phase:** Phase 3 — Execution Safety & Reliability Hardening
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
@@ -37,6 +37,7 @@
 - Added unit tests for the new safety/reconciliation modules.
 - Added `SECURITY.md` with responsible-disclosure and live-trading safety guidance.
 - Added conservative restart position normalization/recovery helpers and tests.
+- Added controlled deployment release gates and operator checklist.
 
 ## Known Remaining Critical Work
 
