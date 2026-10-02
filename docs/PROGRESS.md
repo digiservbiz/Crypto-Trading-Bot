@@ -60,3 +60,21 @@ This is a recovery foundation, not yet startup integration. The bot must still r
 
 ### Next target
 Integrate recovery into startup, then add duplicate-order/idempotency protection and harden the emergency stop path.
+
+
+## 2026-10-02 — Idempotency Foundation
+
+### Milestone
+Added a deterministic execution-key contract for future duplicate-order protection.
+
+### Work completed
+- Created `scripts/idempotency.py`.
+- Execution keys are derived from signal ID, symbol, and side using SHA-256.
+- Input normalization and validation reject empty signals and invalid sides/symbols.
+- Added `tests/test_idempotency.py`.
+
+### Integration status
+The key generator is ready, but persistent duplicate-order checking still needs to be integrated at the broker boundary. No claim is made that duplicate orders are already prevented in the live path.
+
+### Current blocker
+The actual `execute_trade()` path still requires the final execution-safety gate and reconciliation integration before funded trading can be considered.
