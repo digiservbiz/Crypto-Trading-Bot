@@ -4,7 +4,7 @@
 
 ## Current Status
 
-- **Overall engineering progress:** 55%
+- **Overall engineering progress:** 60%
 - **Current phase:** Phase 3 — Execution Safety & Reliability Hardening
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
@@ -22,10 +22,10 @@
 | 4. Order reconciliation & failure handling | In progress | 75% |
 | 5. Restart/position recovery | In progress | 30% |
 | 6. Kill switch / emergency controls | In progress | 20% |
-| 7. Testnet/paper-trading validation | Planned | 0% |
+| 7. Testnet/paper-trading validation | Planned | 10% |
 | 8. Full automated test coverage & CI | Planned | 0% |
 | 9. Deployment hardening | Planned | 0% |
-| 10. Final production-readiness review | Planned | 0% |
+| 10. Final production-readiness review | Planned | 5% |
 
 ## Completed in Current Hardening Branch
 
