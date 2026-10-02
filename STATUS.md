@@ -41,6 +41,7 @@
 - Added deployment hardening checklist and structured validation evidence template.
 - Added startup recovery regression tests and a final release-gate specification.
 - Added crash-safe SQLite execution-key persistence and engineering-hardening completion criteria.
+- Added a standalone controlled broker execution boundary with integrated safety, kill-switch, durable idempotency, and reconciliation behavior.
 
 ### 100% engineering-hardening milestone
 All planned hardening primitives and their regression-test artifacts are now represented on the hardening branch. This does NOT mean test execution, testnet evidence, or funded-live readiness has been verified.
