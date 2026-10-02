@@ -32,6 +32,7 @@ except ImportError:
     _PLOTLY = False
 from prometheus_client import start_http_server
 from scripts.market_selection import configured_symbols
+from scripts.dashboard_markets import market_snapshot
 
 # ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -510,6 +511,30 @@ with tab_overview:
                     f'<div style="color:#ff5252;font-size:0.8rem">⚡ {ts} — {entry.get("reason","")}</div>',
                     unsafe_allow_html=True
                 )
+
+    st.markdown("---")
+
+    # ── Multi-market cockpit ────────────────────────────────────────────────
+    st.subheader("🌐 Multi-Market Cockpit")
+    try:
+        cockpit_symbols = configured_symbols(_load_config())
+    except ValueError as exc:
+        st.error(f"Invalid market configuration: {exc}")
+        cockpit_symbols = []
+
+    if cockpit_symbols:
+        cols = st.columns(min(4, len(cockpit_symbols)))
+        for i, symbol in enumerate(cockpit_symbols):
+            snap = market_snapshot(state, symbol)
+            with cols[i % len(cols)]:
+                st.markdown(f"**{snap['symbol']}**")
+                st.metric("Price", _fmt_usd(snap["price"]) if snap["price"] else "—")
+                regime = str(snap["regime"]).replace("-", " ").title()
+                st.caption(f"{regime} · confidence {snap['confidence'] * 100:.0f}%")
+                if snap["side"]:
+                    st.caption(f"Position: {snap['side'].upper()} · P&L {_fmt_pct(snap['pnl_pct'])}")
+                else:
+                    st.caption("Position: none")
 
     st.markdown("---")
 
