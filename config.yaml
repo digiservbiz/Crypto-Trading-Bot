@@ -39,6 +39,12 @@ exchange:
   api_key: ''
   secret_key: ''
 
+execution:
+  # Hard ceiling enforced by the final execution safety gate.
+  max_position_pct: 0.10
+  # Risk approvals older than this are rejected by the execution gate.
+  max_approval_age_seconds: 300
+
 trading:
   risk_percentage: 0.01
   stop_loss_percentage: 0.02
