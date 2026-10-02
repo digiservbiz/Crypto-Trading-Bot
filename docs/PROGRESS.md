@@ -139,3 +139,12 @@ Added an atomic execution ledger primitive that rejects duplicate execution keys
 
 ### Integration status
 The primitive is not yet persistent or wired into the funded broker path. Duplicate protection remains a release blocker until integrated and validated.
+
+
+## 2026-10-03 — Execution Configuration Validation
+
+### Milestone
+Added a standalone execution configuration validator with conservative limits for position size and approval age, plus explicit spot/futures mode validation.
+
+### Status
+This is a validation primitive, not automatic live-mode wiring. Repository tests still require execution in a working test/CI environment before being marked passed.
