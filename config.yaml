@@ -48,6 +48,8 @@ exchange:
   secret_key: ''
 
 execution:
+  # Explicit market semantics; keep spot/futures behavior unambiguous.
+  market_mode: 'spot'
   # Hard ceiling enforced by the final execution safety gate.
   max_position_pct: 0.10
   # Risk approvals older than this are rejected by the execution gate.
