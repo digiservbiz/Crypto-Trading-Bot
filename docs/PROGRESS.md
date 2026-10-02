@@ -157,3 +157,12 @@ Added a defensive reconciliation wrapper that rejects non-finite, negative, or o
 
 ### Status
 This hardens the reconciliation layer but does not replace the existing broker integration. Full integration and test execution remain outstanding release gates.
+
+
+## 2026-10-03 — Controlled Testnet Runbook
+
+### Milestone
+Added a concrete testnet/paper validation sequence covering dry-run, sandbox credentials, market-mode verification, safety-gate scenarios, order outcomes, restart recovery, kill switch, duplicate execution, timeout/error handling, and release evidence.
+
+### Status
+Documentation is complete; the actual testnet evidence has not been collected yet.
