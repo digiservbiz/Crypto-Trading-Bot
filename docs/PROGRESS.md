@@ -104,3 +104,20 @@ Recovery remains conservative: valid exchange positions can be normalized, while
 
 ### Integration status
 Startup wiring is still intentionally pending. The bot must reconcile exchange state before resuming entries rather than silently reconstructing positions from stale in-memory state.
+
+
+## 2026-10-02 — Execution Lifecycle Classification
+
+### Milestone
+Added a conservative broker-outcome classifier between order reconciliation and strategy state.
+
+### Safety rule
+Only a reconciled full fill can authorize recording a new position. Partial, open, or unknown outcomes remain unresolved and are not automatically retried.
+
+### Work completed
+- Created `scripts/execution_lifecycle.py`.
+- Added `tests/test_execution_lifecycle.py`.
+- Explicitly prevents automatic retry for rejected or unresolved orders.
+
+### Integration status
+The classifier is not yet wired into the live `execute_trade()` path. That integration remains a production-readiness blocker.
