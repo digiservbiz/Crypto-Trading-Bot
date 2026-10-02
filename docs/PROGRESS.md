@@ -130,3 +130,12 @@ Added a release checklist documenting testnet, execution-boundary, recovery, ide
 
 ### Status
 The checklist formalizes the remaining evidence required before funded live trading. Code completion percentage must not be interpreted as permission to trade with real funds.
+
+
+## 2026-10-02 — Idempotency Ledger Primitive
+
+### Milestone
+Added an atomic execution ledger primitive that rejects duplicate execution keys and supports explicit release only when the caller has established that no order exists.
+
+### Integration status
+The primitive is not yet persistent or wired into the funded broker path. Duplicate protection remains a release blocker until integrated and validated.
