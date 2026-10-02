@@ -2,7 +2,15 @@
 
 data:
   sample_data_path: data/sample_ohlcv.csv
-  symbols: ['BTC/USDT', 'ETH/USDT']
+  # Multi-market universe. Add/remove pairs here; the dashboard selector updates automatically.
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+    - XRP/USDT
+    - ADA/USDT
+    - DOGE/USDT
   timeframe: '5m'
   lookback: 60
 
