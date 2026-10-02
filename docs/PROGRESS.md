@@ -166,3 +166,12 @@ Added a concrete testnet/paper validation sequence covering dry-run, sandbox cre
 
 ### Status
 Documentation is complete; the actual testnet evidence has not been collected yet.
+
+
+## 2026-10-03 — Deployment & Validation Evidence Layer
+
+### Milestone
+Added deployment-hardening controls and a structured validation-evidence template covering container/runtime security, secrets, dependencies, network exposure, monitoring, and execution/recovery scenarios.
+
+### Status
+These artifacts make release verification reproducible, but they are not evidence that the controls have passed. Test execution, live-path integration, and testnet validation remain required.
