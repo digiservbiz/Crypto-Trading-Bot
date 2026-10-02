@@ -121,3 +121,12 @@ Only a reconciled full fill can authorize recording a new position. Partial, ope
 
 ### Integration status
 The classifier is not yet wired into the live `execute_trade()` path. That integration remains a production-readiness blocker.
+
+
+## 2026-10-02 — Controlled Release Gate
+
+### Milestone
+Added a release checklist documenting testnet, execution-boundary, recovery, idempotency, emergency-stop, secrets, network, monitoring, and human-review gates.
+
+### Status
+The checklist formalizes the remaining evidence required before funded live trading. Code completion percentage must not be interpreted as permission to trade with real funds.
