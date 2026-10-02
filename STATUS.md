@@ -4,7 +4,7 @@
 
 ## Current Status
 
-- **Overall engineering progress:** 40%
+- **Overall engineering progress:** 43%
 - **Current phase:** Phase 3 — Execution Safety & Reliability Hardening
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
@@ -19,8 +19,8 @@
 | 1. Repository discovery & architecture audit | Complete | 100% |
 | 2. Security/risk/execution audit | Complete | 100% |
 | 3. Execution safety hardening | In progress | 60% |
-| 4. Order reconciliation & failure handling | In progress | 40% |
-| 5. Restart/position recovery | In progress | 20% |
+| 4. Order reconciliation & failure handling | In progress | 50% |
+| 5. Restart/position recovery | In progress | 25% |
 | 6. Kill switch / emergency controls | Planned | 0% |
 | 7. Testnet/paper-trading validation | Planned | 0% |
 | 8. Full automated test coverage & CI | Planned | 0% |
