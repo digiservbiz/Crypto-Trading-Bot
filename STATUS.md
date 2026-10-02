@@ -9,6 +9,7 @@
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
+- **Controlled validation preparation:** 30%
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
@@ -45,6 +46,12 @@
 - Added validated multi-pair configuration and a seven-market default universe.
 - Added a multi-market dashboard cockpit with per-market price, regime, confidence, and position/P&L cards.
 - Added dashboard market selection backed by validated configuration.
+
+### Latest validation-preparation milestone
+
+- Added read-only exchange market eligibility checks against authoritative CCXT `load_markets()` metadata.
+- Added explicit spot/futures market-mode handling and configuration (`execution.market_mode`).
+- Added exchange preflight primitives and regression tests; no order submission is performed.
 
 ### 100% engineering-hardening milestone
 All planned hardening primitives and their regression-test artifacts are now represented on the hardening branch. This does NOT mean test execution, testnet evidence, or funded-live readiness has been verified.
