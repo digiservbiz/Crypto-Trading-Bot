@@ -211,3 +211,12 @@ The adapter is intentionally standalone because the repository safety controls p
 - Added regression tests for the validation gate.
 - Added a read-only testnet preflight document covering exchange-market eligibility and operational safety.
 - Controlled validation preparation advances to 50% based on completed engineering artifacts; no testnet execution is claimed.
+
+
+## 2026-10-04 — Controlled Validation Scenario Harness
+
+- Added regression scenarios for broker timeout/unknown outcomes, persistent duplicate protection across executor instances, kill-switch blocking, and partial fills.
+- Added close-order reconciliation coverage for partial and cancelled outcomes.
+- Added the structured validation-evidence recorder with credential-like field redaction.
+- Controlled validation preparation advances to 60% based on completed artifacts only.
+- No real exchange order or full-suite pass is claimed; those remain evidence gates.
