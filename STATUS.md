@@ -9,7 +9,7 @@
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
-- **Controlled validation preparation:** 50%
+- **Controlled validation preparation:** 60%
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
@@ -53,12 +53,15 @@
 - Added explicit spot/futures market-mode handling and configuration (`execution.market_mode`).
 - Added exchange preflight primitives and regression tests; no order submission is performed.
 
-### Validation preparation — 50%
+### Validation preparation — 60%
 
 - Added a fail-closed configuration guard requiring sandbox/testnet mode for controlled validation.
 - Added explicit validation checks for market mode and non-empty configured market universe.
 - Added a read-only testnet preflight checklist covering market eligibility and secret handling.
-- Actual exchange connectivity, order scenarios, reconciliation, restart, and full-suite execution remain evidence gates.
+- Added controlled execution scenarios for broker timeout/unknown outcomes, persistent duplicate protection across executor instances, kill-switch blocking, and partial fills.
+- Added close-order reconciliation regression coverage for partial and cancelled outcomes.
+- Added structured validation evidence recording with credential-like field redaction.
+- Actual exchange connectivity, real testnet order scenarios, and full-suite execution remain evidence gates.
 
 ### 100% engineering-hardening milestone
 All planned hardening primitives and their regression-test artifacts are now represented on the hardening branch. This does NOT mean test execution, testnet evidence, or funded-live readiness has been verified.
@@ -72,7 +75,7 @@ All planned hardening primitives and their regression-test artifacts are now rep
 5. Define and enforce spot vs futures/short semantics.
 6. Add idempotency/duplicate-order protection.
 7. Harden emergency close/kill-switch behavior.
-8. Expand execution-boundary tests, including timeouts, partial fills, restart recovery, and duplicate submissions.
+8. Expand execution-boundary integration, including actual broker reconciliation/fetch-after-submit and startup wiring.
 9. Validate on testnet/paper trading before any funded deployment.
 10. Harden deployment, secrets, dependency, and monitoring controls.
 
