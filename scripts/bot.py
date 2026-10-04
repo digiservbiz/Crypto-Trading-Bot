@@ -927,6 +927,20 @@ def run_bot(config: Dict[str, Any]) -> None:
                             pipeline_stats["approvals"] += 1
                             signal = orchestrator._last_signal
                             side = signal.side if signal else "buy"
+                            market_mode = str(
+                                config.get("execution", {}).get("market_mode", "spot")
+                            ).lower()
+
+                            # Spot mode cannot open a short by sending a plain sell order.
+                            # A sell is reserved for closing an existing long position.
+                            if market_mode == "spot" and side == "sell":
+                                PIPELINE_REJECTIONS.inc()
+                                pipeline_stats["rejections"] += 1
+                                logger.warning(
+                                    "[%s] Spot mode rejected sell entry; short semantics require explicit futures configuration",
+                                    symbol,
+                                )
+                                continue
 
                             # Research is informational only after risk approval.
                             # Never mutate an approved RiskDecision before execution.
