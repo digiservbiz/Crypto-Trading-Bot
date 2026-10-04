@@ -295,3 +295,11 @@ The execution safety architecture is complete. Remaining work is evidence: execu
 
 ### Remaining evidence gates
 Repository deployment artifacts are ready for target-environment validation. Actual VPS security, container startup, persistent-state behavior, monitoring, and testnet execution still require execution on the target environment. Funded live trading remains blocked until the final release gate passes.
+
+
+## 2026-10-04 — Deployment validation gate
+
+- CI run #240 passed after deployment configuration validation was added.
+- The deployment stack is now CI-validated at the configuration level.
+- VPS-specific evidence remains outstanding: host hardening, container startup, persistent-state recovery, monitoring, firewall exposure, and testnet execution.
+- Funded live trading remains blocked by the final release gate.
