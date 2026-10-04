@@ -46,6 +46,8 @@ exchange:
   # Leave blank — set EXCHANGE_API_KEY and EXCHANGE_SECRET_KEY env vars instead
   api_key: ''
   secret_key: ''
+  # Controlled validation only; set true for sandbox/testnet runs.
+  sandbox: true
 
 execution:
   # Explicit market semantics; keep spot/futures behavior unambiguous.
