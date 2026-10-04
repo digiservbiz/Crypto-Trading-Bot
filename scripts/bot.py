@@ -42,6 +42,9 @@ from scripts.logger import get_logger
 from scripts.agents.orchestrator import TradingOrchestrator
 from scripts.agents.base_agent import RiskDecision
 from scripts.quantmind_client import QuantMindClient
+from scripts.controlled_executor import ControlledExecutor
+from scripts.order_reconciliation import fetch_order_reconciliation, reconcile_order
+from scripts.startup_recovery import recover_startup_state, require_startup_recovery
 
 
 logger = get_logger(__name__)
@@ -454,6 +457,7 @@ def execute_trade(
     current_price: float,
     balance: float,
     dry_run: bool = False,
+    controlled_executor: Optional[ControlledExecutor] = None,
 ) -> Optional[float]:
     """Execute a trade ONLY after a valid RiskDecision approval.
 
@@ -500,24 +504,37 @@ def execute_trade(
         TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(trade_amount, 6))).set(1)
         return trade_amount
 
+    if controlled_executor is None:
+        logger.critical("[%s] Live execution boundary is not configured — BLOCKED", symbol)
+        notifier.send_message(f"[ERROR] Live execution blocked for {symbol}: controlled executor unavailable")
+        return None
+
     try:
-        logger.info("Placing order: %s", msg)
-        order = exchange.create_order(symbol, "market", side, trade_amount)
-        if order is None:
-            logger.error("[%s] Exchange returned None for order — may not have executed", symbol)
-            notifier.send_message(f"[WARNING] Order may not have executed for {symbol}: exchange returned None")
-            return None
-        order_id = order.get("id", "unknown")
-        order_status = order.get("status", "unknown")
-        logger.info("[%s] Order placed: id=%s status=%s", symbol, order_id, order_status)
-        notifier.send_message(
-            f"{msg} | order_id={order_id} status={order_status}"
+        result = controlled_executor.execute(
+            risk_decision,
+            symbol,
+            side,
+            current_price,
+            balance,
+            now=time.time(),
         )
-        TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(trade_amount, 6))).set(1)
-        return trade_amount
+        logger.info(
+            "[%s] Controlled execution result: state=%s order_id=%s filled=%.8f",
+            symbol, result.state, result.order_id, result.filled_amount,
+        )
+        if result.state != "filled":
+            notifier.send_message(
+                f"[WARNING] {symbol} execution state={result.state}; position state not advanced"
+            )
+            return None
+        notifier.send_message(
+            f"{msg} | order_id={result.order_id} status=filled"
+        )
+        TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(result.filled_amount, 6))).set(1)
+        return result.filled_amount
     except Exception as exc:
-        logger.error("Trade execution failed for %s: %s", symbol, exc)
-        notifier.send_message(f"[ERROR] Trade execution failed for {symbol}: {exc}")
+        logger.error("Controlled trade execution failed for %s: %s", symbol, exc)
+        notifier.send_message(f"[ERROR] Controlled trade execution failed for {symbol}: {exc}")
         return None
 
 
@@ -565,11 +582,30 @@ def close_position_order(
 
     try:
         order = exchange.create_order(symbol, "market", side, amount)
-        if order is None:
-            logger.error("[%s] Close order returned None — position may still be open", symbol)
+        if not isinstance(order, dict) or not order.get("id"):
+            logger.error("[%s] Close order returned no authoritative order id — position may still be open", symbol)
             notifier.send_message(f"[WARNING] Close order may not have executed for {symbol}")
             return False
-        logger.info("[%s] Close order placed: id=%s status=%s", symbol, order.get("id"), order.get("status"))
+
+        reconciliation = reconcile_order(order, amount)
+        if not reconciliation.is_fully_filled and not reconciliation.is_terminal_failure:
+            authoritative = fetch_order_reconciliation(
+                exchange, reconciliation.order_id, symbol, amount
+            )
+            if authoritative is not None:
+                reconciliation = authoritative
+
+        logger.info(
+            "[%s] Close order reconciled: id=%s state=%s filled=%.8f",
+            symbol, reconciliation.order_id, reconciliation.status,
+            reconciliation.filled_amount,
+        )
+        if not reconciliation.is_fully_filled:
+            notifier.send_message(
+                f"[WARNING] Close order for {symbol} is {reconciliation.status}; position remains open"
+            )
+            return False
+
         notifier.send_message(msg)
         return True
     except Exception as exc:
@@ -608,9 +644,24 @@ def run_bot(config: Dict[str, Any]) -> None:
     notifier = Notifier(config)
     orchestrator = TradingOrchestrator(config)
     qm_client = QuantMindClient(config)
+    controlled_executor = ControlledExecutor(exchange)
 
     symbols = config["data"]["symbols"]
     dry_run = config.get("dry_run", True)
+
+    # A restart must recover authoritative exchange state before live trading.
+    startup_state = recover_startup_state(exchange, symbols)
+    if not dry_run:
+        require_startup_recovery(startup_state)
+        logger.info(
+            "Startup recovery complete | recovered_positions=%d",
+            len(startup_state.positions),
+        )
+    else:
+        logger.info(
+            "Startup recovery check | dry-run mode, recovered_positions=%d",
+            len(startup_state.positions),
+        )
     # Column names match _add_indicators() — Ichimoku primary, BB+ATR+OBV supporting
     features = [
         "close", "volume", "volatility",
@@ -625,6 +676,19 @@ def run_bot(config: Dict[str, Any]) -> None:
     entry_prices: Dict[str, float] = {s: 0.0 for s in symbols}
     highest_prices: Dict[str, float] = {s: 0.0 for s in symbols}
     trade_amounts: Dict[str, float] = {s: 0.0 for s in symbols}
+
+    # Rebuild only conservative local state from authoritative exchange positions.
+    for recovered in startup_state.positions:
+        if recovered.symbol not in positions:
+            continue
+        if recovered.side == "long":
+            positions[recovered.symbol] = "buy"
+        elif recovered.side == "short":
+            positions[recovered.symbol] = "sell"
+        trade_amounts[recovered.symbol] = recovered.amount
+        if recovered.entry_price is not None:
+            entry_prices[recovered.symbol] = recovered.entry_price
+            highest_prices[recovered.symbol] = recovered.entry_price
 
     # ---- Portfolio-level state ----
     try:
@@ -891,18 +955,31 @@ def run_bot(config: Dict[str, Any]) -> None:
                             pipeline_stats["approvals"] += 1
                             signal = orchestrator._last_signal
                             side = signal.side if signal else "buy"
+                            market_mode = str(
+                                config.get("execution", {}).get("market_mode", "spot")
+                            ).lower()
 
-                            # Research-backed position sizing (#3)
+                            # Spot mode cannot open a short by sending a plain sell order.
+                            # A sell is reserved for closing an existing long position.
+                            if market_mode == "spot" and side == "sell":
+                                PIPELINE_REJECTIONS.inc()
+                                pipeline_stats["rejections"] += 1
+                                logger.warning(
+                                    "[%s] Spot mode rejected sell entry; short semantics require explicit futures configuration",
+                                    symbol,
+                                )
+                                continue
+
+                            # Research is informational only after risk approval.
+                            # Never mutate an approved RiskDecision before execution.
                             qm_cfg = config.get("quantmind", {})
                             if qm_cfg.get("research_position_sizing", True):
                                 research_multiplier = qm_client.get_research_signal_multiplier(symbol)
                                 research_sentiment = qm_client.get_research_sentiment(symbol)
                                 logger.info(
-                                    "[%s] QuantMind — sentiment: %.3f  position multiplier: %.3fx",
+                                    "[%s] QuantMind research — sentiment: %.3f  suggested multiplier: %.3fx "
+                                    "(not applied after risk approval)",
                                     symbol, research_sentiment, research_multiplier,
-                                )
-                                risk_decision.adjusted_size_pct = round(
-                                    risk_decision.adjusted_size_pct * research_multiplier, 6
                                 )
 
                             amount = execute_trade(
@@ -914,6 +991,7 @@ def run_bot(config: Dict[str, Any]) -> None:
                                 current_price=current_price,
                                 balance=portfolio_state["balance"],
                                 dry_run=dry_run,
+                                controlled_executor=controlled_executor,
                             )
 
                             if amount is not None:

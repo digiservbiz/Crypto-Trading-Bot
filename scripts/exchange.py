@@ -73,6 +73,18 @@ class Exchange:
             logger.error("Error connecting to exchange %s: %s", exchange_name, exc)
             raise
 
+    def load_markets(self) -> dict:
+        """Load authoritative exchange market metadata without submitting orders."""
+        return self.exchange.load_markets()
+
+    def fetch_positions(self, symbols: list[str]) -> list:
+        """Fetch authoritative exchange positions for startup recovery."""
+        try:
+            return self.exchange.fetch_positions(symbols)
+        except Exception as exc:
+            logger.error("Error fetching positions: %s", exc)
+            raise
+
     def get_balance(self, currency: str) -> dict:
         """Fetch current balance for a currency.
 
@@ -108,6 +120,14 @@ class Exchange:
         except Exception as exc:
             logger.error("Error fetching OHLCV for %s (%s, limit=%d): %s", symbol, timeframe, limit, exc)
             return []
+
+    def fetch_order(self, order_id: str, symbol: str) -> dict:
+        """Fetch authoritative order state without submitting a new order."""
+        try:
+            return self.exchange.fetch_order(order_id, symbol)
+        except Exception as exc:
+            logger.error("Error fetching order %s for %s: %s", order_id, symbol, exc)
+            return {}
 
     def create_order(
         self,

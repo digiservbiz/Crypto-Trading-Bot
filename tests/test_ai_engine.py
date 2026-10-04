@@ -1,12 +1,24 @@
 import unittest
+
 from scripts.inference.ai_engine import AIEngine
 
-class TestAIEngine(unittest.TestCase):
-    def test_singleton(self):
-        """Test that the AIEngine is a singleton."""
-        engine1 = AIEngine()
-        engine2 = AIEngine()
-        self.assertIs(engine1, engine2)
 
-if __name__ == '__main__':
+class TestAIEngine(unittest.TestCase):
+    def test_initializes_with_config(self):
+        config = {
+            "inference": {"models_dir": "models"},
+            "models": {
+                "model_type": "lstm",
+                "model_selection": {
+                    "enabled": True,
+                    "volatility_threshold": 0.02,
+                },
+            },
+        }
+        engine = AIEngine(config)
+        self.assertEqual(engine.models_dir, "models")
+        self.assertEqual(engine.sequential_models, {})
+
+
+if __name__ == "__main__":
     unittest.main()

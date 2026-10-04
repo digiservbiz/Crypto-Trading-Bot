@@ -31,6 +31,8 @@ try:
 except ImportError:
     _PLOTLY = False
 from prometheus_client import start_http_server
+from scripts.market_selection import configured_symbols
+from scripts.dashboard_markets import market_snapshot
 
 # ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -512,6 +514,30 @@ with tab_overview:
 
     st.markdown("---")
 
+    # ── Multi-market cockpit ────────────────────────────────────────────────
+    st.subheader("🌐 Multi-Market Cockpit")
+    try:
+        cockpit_symbols = configured_symbols(_load_config())
+    except ValueError as exc:
+        st.error(f"Invalid market configuration: {exc}")
+        cockpit_symbols = []
+
+    if cockpit_symbols:
+        cols = st.columns(min(4, len(cockpit_symbols)))
+        for i, symbol in enumerate(cockpit_symbols):
+            snap = market_snapshot(state, symbol)
+            with cols[i % len(cols)]:
+                st.markdown(f"**{snap['symbol']}**")
+                st.metric("Price", _fmt_usd(snap["price"]) if snap["price"] else "—")
+                regime = str(snap["regime"]).replace("-", " ").title()
+                st.caption(f"{regime} · confidence {snap['confidence'] * 100:.0f}%")
+                if snap["side"]:
+                    st.caption(f"Position: {snap['side'].upper()} · P&L {_fmt_pct(snap['pnl_pct'])}")
+                else:
+                    st.caption("Position: none")
+
+    st.markdown("---")
+
     # ── Pipeline Stats ───────────────────────────────────────────────────────
     st.subheader("🤖 Agent Pipeline Stats")
     p1, p2, p3, p4, p5 = st.columns(5)
@@ -538,8 +564,16 @@ with tab_overview:
 
     # ── Live Ichimoku Chart ──────────────────────────────────────────────────
     st.subheader("📈 Live Price Chart — Ichimoku Kinko Hyo")
-    symbols_config = _load_config().get("data", {}).get("symbols", ["BTC/USDT"])
-    chart_symbol = st.selectbox("Symbol", symbols_config, key="chart_symbol")
+    try:
+        symbols_config = configured_symbols(_load_config())
+    except ValueError as exc:
+        st.error(f"Invalid market configuration: {exc}")
+        symbols_config = ["BTC/USDT"]
+    chart_symbol = st.selectbox(
+        "Market", symbols_config, key="chart_symbol",
+        help="Select the configured market to inspect. This selector does not bypass risk controls."
+    )
+    st.caption(f"Configured markets: {len(symbols_config)} · Selected: {chart_symbol}")
     chart_df = _load_chart_data(chart_symbol)
     if chart_df is not None and _PLOTLY:
         fig = _ichimoku_chart(chart_df, chart_symbol)

@@ -2,7 +2,15 @@
 
 data:
   sample_data_path: data/sample_ohlcv.csv
-  symbols: ['BTC/USDT', 'ETH/USDT']
+  # Multi-market universe. Add/remove pairs here; the dashboard selector updates automatically.
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+    - XRP/USDT
+    - ADA/USDT
+    - DOGE/USDT
   timeframe: '5m'
   lookback: 60
 
@@ -38,6 +46,16 @@ exchange:
   # Leave blank — set EXCHANGE_API_KEY and EXCHANGE_SECRET_KEY env vars instead
   api_key: ''
   secret_key: ''
+  # Controlled validation only; set true for sandbox/testnet runs.
+  sandbox: true
+
+execution:
+  # Explicit market semantics; keep spot/futures behavior unambiguous.
+  market_mode: 'spot'
+  # Hard ceiling enforced by the final execution safety gate.
+  max_position_pct: 0.10
+  # Risk approvals older than this are rejected by the execution gate.
+  max_approval_age_seconds: 300
 
 trading:
   risk_percentage: 0.01
