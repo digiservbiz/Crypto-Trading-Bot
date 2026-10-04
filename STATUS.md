@@ -9,7 +9,7 @@
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
-- **Controlled validation preparation:** 60%
+- **Controlled validation preparation:** 62%
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
@@ -61,6 +61,7 @@
 - Added controlled execution scenarios for broker timeout/unknown outcomes, persistent duplicate protection across executor instances, kill-switch blocking, and partial fills.
 - Added close-order reconciliation regression coverage for partial and cancelled outcomes.
 - Added structured validation evidence recording with credential-like field redaction.
+- Added a read-only validation evidence reporter that keeps release blocked until recorded scenarios are actually executed and passed.
 - Actual exchange connectivity, real testnet order scenarios, and full-suite execution remain evidence gates.
 
 ### 100% engineering-hardening milestone
