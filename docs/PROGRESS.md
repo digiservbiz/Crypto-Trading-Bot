@@ -229,3 +229,18 @@ The adapter is intentionally standalone because the repository safety controls p
 - Added reporting guidance that explicitly prevents documentation from being treated as execution evidence.
 - Controlled validation preparation advances to 62% based on completed artifacts only.
 - Actual exchange/testnet execution and full-suite test execution remain outstanding evidence gates.
+
+## 2026-10-04 — Live Execution Boundary Integration
+
+### Milestone
+Integrated the controlled execution boundary into the bot's non-dry-run entry path.
+
+### Work completed
+- scripts/bot.py now requires ControlledExecutor for live/non-dry-run entries.
+- Live orders no longer call the exchange directly from execute_trade().
+- QuantMind research sizing is now informational after risk approval and cannot mutate the approved RiskDecision.
+- Only a reconciled filled result advances the local position state.
+- Added tests/test_bot_execution_boundary.py covering missing executor, filled execution, and unresolved execution.
+
+### Status
+The main entry-order safety gate is now wired. Close-order reconciliation, startup recovery integration, full test execution, and controlled testnet evidence remain outstanding release gates.
