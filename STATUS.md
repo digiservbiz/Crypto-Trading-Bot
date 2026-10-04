@@ -9,13 +9,13 @@
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
-- **Controlled validation preparation:** 85%
+- **Controlled validation preparation:** 90%
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
-## 85% milestone
+## 90% milestone
 
-The live entry path is now behind the controlled executor, close orders require authoritative reconciliation before local position clearing, and spot mode rejects sell entries so plain spot orders cannot be misinterpreted as shorts. The exchange wrapper now exposes authoritative order fetch for reconciliation.
+Startup recovery is now wired into the real bot startup path. Live mode fails closed when authoritative exchange positions cannot be recovered, and recovered positions rebuild conservative local state before trading resumes. The exchange wrapper now exposes authoritative position recovery as well as order recovery.
 
 ## Validation Status
 
@@ -25,10 +25,9 @@ The live entry path is now behind the controlled executor, close orders require 
 
 ## Critical gates remaining
 
-1. Wire startup position recovery into trading resume.
-2. Preserve durable duplicate protection through ambiguous outcomes and restarts.
-3. Execute the full automated test suite in CI/working environment.
-4. Execute controlled testnet/paper scenarios and record evidence.
-5. Verify deployment, secrets, network, and monitoring controls.
+1. Preserve durable duplicate protection through ambiguous outcomes and restarts.
+2. Execute the full automated test suite in CI/working environment.
+3. Execute controlled testnet/paper scenarios and record evidence.
+4. Verify deployment, secrets, network, and monitoring controls.
 
 The percentage is an engineering-progress estimate, not a financial-performance metric.
