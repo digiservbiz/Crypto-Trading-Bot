@@ -266,3 +266,15 @@ Execution entry and close boundaries are hardened. Remaining release gates are s
 
 ### Status
 Restart recovery is now part of the actual live startup path. Remaining release gates are durable execution evidence, full test execution, controlled testnet/paper validation, and deployment verification.
+
+## 2026-10-04 — Durable Idempotency Finalization
+
+### Work completed
+- Persistent execution claims now survive process restarts.
+- Ambiguous/unknown broker outcomes retain their execution claim so the same signal cannot be blindly resubmitted.
+- Terminal broker failures explicitly release their claim, allowing a future approved signal to execute normally.
+- Added regression coverage for terminal-failure claim release.
+- Controlled validation config now explicitly declares sandbox mode.
+
+### Status
+The execution safety architecture is complete. Remaining work is evidence: execute the automated suite, run controlled testnet/paper scenarios, and verify deployment controls before any funded live release.
