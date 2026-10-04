@@ -22,7 +22,10 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install everything except torch/pytorch-lightning/flair/arch/quantmind (heavy or git deps)
+          # Install the CPU PyTorch runtime required by the inference and bot tests.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # Install everything else except optional/heavy packages with incompatible
+          # or git-only dependencies that are not required by the test suite.
           grep -v -E "^torch|^pytorch-lightning|^flair|^arch|^quantmind|^#" requirements.txt | pip install -r /dev/stdin
 
       - name: Syntax check
