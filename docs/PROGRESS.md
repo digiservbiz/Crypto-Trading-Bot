@@ -278,3 +278,20 @@ Restart recovery is now part of the actual live startup path. Remaining release 
 
 ### Status
 The execution safety architecture is complete. Remaining work is evidence: execute the automated suite, run controlled testnet/paper scenarios, and verify deployment controls before any funded live release.
+
+
+## 2026-10-04 — Full CI validation + VPS deployment preparation
+
+### Validation
+- Full automated test suite passed in GitHub Actions run #225 on commit `1ce5051849abd8b08a70400c29ae9fdd1c228bca`.
+- Cross-restart durable execution tests are now included in the validated branch commit.
+
+### Deployment preparation
+- Added non-root `Dockerfile` with CPU PyTorch installation matching CI requirements.
+- Added `docker-compose.yml` for bot, dashboard, and private Prometheus services.
+- Added `.env.example` and `.dockerignore` to keep credentials and runtime state out of Git/build context.
+- Added `deployment/prometheus.yml` with an internal bot scrape target.
+- Added `deployment/README.md` with VPS preparation, dry-run startup, controlled stop, and testnet transition steps.
+
+### Remaining evidence gates
+Repository deployment artifacts are ready for target-environment validation. Actual VPS security, container startup, persistent-state behavior, monitoring, and testnet execution still require execution on the target environment. Funded live trading remains blocked until the final release gate passes.
