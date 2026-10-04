@@ -9,7 +9,7 @@
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
-- **Controlled validation preparation:** 62%
+- **Controlled validation preparation:** 70%
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
@@ -62,6 +62,7 @@
 - Added close-order reconciliation regression coverage for partial and cancelled outcomes.
 - Added structured validation evidence recording with credential-like field redaction.
 - Added a read-only validation evidence reporter that keeps release blocked until recorded scenarios are actually executed and passed.
+- Added regression coverage for authoritative entry/close state-transition rules.
 - Actual exchange connectivity, real testnet order scenarios, and full-suite execution remain evidence gates.
 
 ### 100% engineering-hardening milestone
@@ -79,6 +80,10 @@ All planned hardening primitives and their regression-test artifacts are now rep
 8. Expand execution-boundary integration, including actual broker reconciliation/fetch-after-submit and startup wiring.
 9. Validate on testnet/paper trading before any funded deployment.
 10. Harden deployment, secrets, dependency, and monitoring controls.
+
+## 70% milestone
+
+The validation layer now has a deterministic release summary and explicit state-transition tests for the rule that partial/unknown fills must never be recorded as completed entries or closes. The live bot path remains intentionally separate pending safe integration.
 
 ## Validation Status
 
