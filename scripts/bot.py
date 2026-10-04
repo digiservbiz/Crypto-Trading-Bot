@@ -44,6 +44,7 @@ from scripts.agents.base_agent import RiskDecision
 from scripts.quantmind_client import QuantMindClient
 from scripts.controlled_executor import ControlledExecutor
 from scripts.order_reconciliation import fetch_order_reconciliation, reconcile_order
+from scripts.startup_recovery import recover_startup_state, require_startup_recovery
 
 
 logger = get_logger(__name__)
@@ -647,6 +648,20 @@ def run_bot(config: Dict[str, Any]) -> None:
 
     symbols = config["data"]["symbols"]
     dry_run = config.get("dry_run", True)
+
+    # A restart must recover authoritative exchange state before live trading.
+    startup_state = recover_startup_state(exchange, symbols)
+    if not dry_run:
+        require_startup_recovery(startup_state)
+        logger.info(
+            "Startup recovery complete | recovered_positions=%d",
+            len(startup_state.positions),
+        )
+    else:
+        logger.info(
+            "Startup recovery check | dry-run mode, recovered_positions=%d",
+            len(startup_state.positions),
+        )
     # Column names match _add_indicators() — Ichimoku primary, BB+ATR+OBV supporting
     features = [
         "close", "volume", "volatility",
