@@ -37,8 +37,8 @@ jobs:
           python -m py_compile scripts/quantmind_client.py
           python -m py_compile scripts/research_updater.py
 
-      - name: Run agent tests
-        run: python -m pytest tests/test_agents.py -v --tb=short
+      - name: Run full automated test suite
+        run: python -m pytest tests -v --tb=short
 
       - name: Verify sample data exists
         run: python -c "import pandas as pd; df = pd.read_csv('data/sample_ohlcv.csv'); assert len(df) >= 4000, f'Expected >=4000 rows, got {len(df)}'"
