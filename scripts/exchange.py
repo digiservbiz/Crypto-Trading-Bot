@@ -113,6 +113,14 @@ class Exchange:
             logger.error("Error fetching OHLCV for %s (%s, limit=%d): %s", symbol, timeframe, limit, exc)
             return []
 
+    def fetch_order(self, order_id: str, symbol: str) -> dict:
+        """Fetch authoritative order state without submitting a new order."""
+        try:
+            return self.exchange.fetch_order(order_id, symbol)
+        except Exception as exc:
+            logger.error("Error fetching order %s for %s: %s", order_id, symbol, exc)
+            return {}
+
     def create_order(
         self,
         symbol: str,
