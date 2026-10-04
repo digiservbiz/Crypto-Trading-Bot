@@ -24,7 +24,7 @@ def build_execution_key(signal_id: str, symbol: str, side: str) -> str:
     """Build a stable, bounded idempotency key from an approved signal."""
     sid = normalize_signal_id(signal_id)
     sym = str(symbol or "").strip().upper()
-    action = str(side or "").strip().lower()
+    action = str(side or "").lower()
 
     if not re.fullmatch(r"[A-Z0-9._:/-]+", sym):
         raise ValueError("invalid symbol")
