@@ -67,3 +67,32 @@ def test_controlled_executor_does_not_clear_ambiguous_claim(tmp_path):
     assert result.state == "unresolved"
     assert ledger.contains("missing") is False
     assert exchange.calls == 1
+
+
+def test_controlled_executor_fetches_authoritative_state_for_open_submission(tmp_path):
+    class FetchingExchange(FakeExchange):
+        def fetch_order(self, order_id, symbol):
+            return {"id": order_id, "status": "closed", "filled": 1.0, "remaining": 0.0}
+
+    exchange = FetchingExchange({"id": "o2", "status": "open", "filled": 0.0, "remaining": 1.0})
+    executor = ControlledExecutor(
+        exchange,
+        kill_switch=KillSwitch(str(tmp_path / "stop")),
+        ledger=PersistentExecutionLedger(str(tmp_path / "ledger.sqlite3")),
+    )
+    result = executor.execute(approved(), "BTC/USDT", "buy", 50000, 1000, 100)
+    assert result.state == "filled"
+    assert result.order_id == "o2"
+    assert exchange.calls == 1
+
+
+def test_controlled_executor_keeps_unresolved_when_fetch_is_unavailable(tmp_path):
+    exchange = FakeExchange({"id": "o3", "status": "open", "filled": 0.2, "remaining": 0.8})
+    executor = ControlledExecutor(
+        exchange,
+        kill_switch=KillSwitch(str(tmp_path / "stop")),
+        ledger=PersistentExecutionLedger(str(tmp_path / "ledger.sqlite3")),
+    )
+    result = executor.execute(approved(), "BTC/USDT", "buy", 50000, 1000, 100)
+    assert result.state == "unresolved"
+    assert result.order_id == "o3"
