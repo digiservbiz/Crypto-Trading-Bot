@@ -42,6 +42,7 @@ from scripts.logger import get_logger
 from scripts.agents.orchestrator import TradingOrchestrator
 from scripts.agents.base_agent import RiskDecision
 from scripts.quantmind_client import QuantMindClient
+from scripts.controlled_executor import ControlledExecutor
 
 
 logger = get_logger(__name__)
@@ -454,6 +455,7 @@ def execute_trade(
     current_price: float,
     balance: float,
     dry_run: bool = False,
+    controlled_executor: Optional[ControlledExecutor] = None,
 ) -> Optional[float]:
     """Execute a trade ONLY after a valid RiskDecision approval.
 
@@ -500,24 +502,37 @@ def execute_trade(
         TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(trade_amount, 6))).set(1)
         return trade_amount
 
+    if controlled_executor is None:
+        logger.critical("[%s] Live execution boundary is not configured — BLOCKED", symbol)
+        notifier.send_message(f"[ERROR] Live execution blocked for {symbol}: controlled executor unavailable")
+        return None
+
     try:
-        logger.info("Placing order: %s", msg)
-        order = exchange.create_order(symbol, "market", side, trade_amount)
-        if order is None:
-            logger.error("[%s] Exchange returned None for order — may not have executed", symbol)
-            notifier.send_message(f"[WARNING] Order may not have executed for {symbol}: exchange returned None")
-            return None
-        order_id = order.get("id", "unknown")
-        order_status = order.get("status", "unknown")
-        logger.info("[%s] Order placed: id=%s status=%s", symbol, order_id, order_status)
-        notifier.send_message(
-            f"{msg} | order_id={order_id} status={order_status}"
+        result = controlled_executor.execute(
+            risk_decision,
+            symbol,
+            side,
+            current_price,
+            balance,
+            now=time.time(),
         )
-        TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(trade_amount, 6))).set(1)
-        return trade_amount
+        logger.info(
+            "[%s] Controlled execution result: state=%s order_id=%s filled=%.8f",
+            symbol, result.state, result.order_id, result.filled_amount,
+        )
+        if result.state != "filled":
+            notifier.send_message(
+                f"[WARNING] {symbol} execution state={result.state}; position state not advanced"
+            )
+            return None
+        notifier.send_message(
+            f"{msg} | order_id={result.order_id} status=filled"
+        )
+        TRADES.labels(symbol, side, str(round(current_price, 2)), str(round(result.filled_amount, 6))).set(1)
+        return result.filled_amount
     except Exception as exc:
-        logger.error("Trade execution failed for %s: %s", symbol, exc)
-        notifier.send_message(f"[ERROR] Trade execution failed for {symbol}: {exc}")
+        logger.error("Controlled trade execution failed for %s: %s", symbol, exc)
+        notifier.send_message(f"[ERROR] Controlled trade execution failed for {symbol}: {exc}")
         return None
 
 
@@ -608,6 +623,7 @@ def run_bot(config: Dict[str, Any]) -> None:
     notifier = Notifier(config)
     orchestrator = TradingOrchestrator(config)
     qm_client = QuantMindClient(config)
+    controlled_executor = ControlledExecutor(exchange)
 
     symbols = config["data"]["symbols"]
     dry_run = config.get("dry_run", True)
@@ -892,17 +908,16 @@ def run_bot(config: Dict[str, Any]) -> None:
                             signal = orchestrator._last_signal
                             side = signal.side if signal else "buy"
 
-                            # Research-backed position sizing (#3)
+                            # Research is informational only after risk approval.
+                            # Never mutate an approved RiskDecision before execution.
                             qm_cfg = config.get("quantmind", {})
                             if qm_cfg.get("research_position_sizing", True):
                                 research_multiplier = qm_client.get_research_signal_multiplier(symbol)
                                 research_sentiment = qm_client.get_research_sentiment(symbol)
                                 logger.info(
-                                    "[%s] QuantMind — sentiment: %.3f  position multiplier: %.3fx",
+                                    "[%s] QuantMind research — sentiment: %.3f  suggested multiplier: %.3fx "
+                                    "(not applied after risk approval)",
                                     symbol, research_sentiment, research_multiplier,
-                                )
-                                risk_decision.adjusted_size_pct = round(
-                                    risk_decision.adjusted_size_pct * research_multiplier, 6
                                 )
 
                             amount = execute_trade(
@@ -914,6 +929,7 @@ def run_bot(config: Dict[str, Any]) -> None:
                                 current_price=current_price,
                                 balance=portfolio_state["balance"],
                                 dry_run=dry_run,
+                                controlled_executor=controlled_executor,
                             )
 
                             if amount is not None:
