@@ -220,3 +220,12 @@ The adapter is intentionally standalone because the repository safety controls p
 - Added the structured validation-evidence recorder with credential-like field redaction.
 - Controlled validation preparation advances to 60% based on completed artifacts only.
 - No real exchange order or full-suite pass is claimed; those remain evidence gates.
+
+
+## 2026-10-04 — Validation Evidence Reporting
+
+- Added a read-only JSONL validation evidence loader and release-status summarizer.
+- Added regression coverage for incomplete and fully passing evidence sets.
+- Added reporting guidance that explicitly prevents documentation from being treated as execution evidence.
+- Controlled validation preparation advances to 62% based on completed artifacts only.
+- Actual exchange/testnet execution and full-suite test execution remain outstanding evidence gates.
