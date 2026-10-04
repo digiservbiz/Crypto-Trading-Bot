@@ -43,6 +43,7 @@ from scripts.agents.orchestrator import TradingOrchestrator
 from scripts.agents.base_agent import RiskDecision
 from scripts.quantmind_client import QuantMindClient
 from scripts.controlled_executor import ControlledExecutor
+from scripts.order_reconciliation import fetch_order_reconciliation, reconcile_order
 
 
 logger = get_logger(__name__)
@@ -580,11 +581,30 @@ def close_position_order(
 
     try:
         order = exchange.create_order(symbol, "market", side, amount)
-        if order is None:
-            logger.error("[%s] Close order returned None — position may still be open", symbol)
+        if not isinstance(order, dict) or not order.get("id"):
+            logger.error("[%s] Close order returned no authoritative order id — position may still be open", symbol)
             notifier.send_message(f"[WARNING] Close order may not have executed for {symbol}")
             return False
-        logger.info("[%s] Close order placed: id=%s status=%s", symbol, order.get("id"), order.get("status"))
+
+        reconciliation = reconcile_order(order, amount)
+        if not reconciliation.is_fully_filled and not reconciliation.is_terminal_failure:
+            authoritative = fetch_order_reconciliation(
+                exchange, reconciliation.order_id, symbol, amount
+            )
+            if authoritative is not None:
+                reconciliation = authoritative
+
+        logger.info(
+            "[%s] Close order reconciled: id=%s state=%s filled=%.8f",
+            symbol, reconciliation.order_id, reconciliation.status,
+            reconciliation.filled_amount,
+        )
+        if not reconciliation.is_fully_filled:
+            notifier.send_message(
+                f"[WARNING] Close order for {symbol} is {reconciliation.status}; position remains open"
+            )
+            return False
+
         notifier.send_message(msg)
         return True
     except Exception as exc:
