@@ -19,3 +19,11 @@ def test_persistent_ledger_rejects_empty_key(tmp_path):
         pass
     else:
         raise AssertionError("empty execution key must be rejected")
+
+
+def test_persistent_ledger_can_release_terminal_failure(tmp_path):
+    ledger = PersistentExecutionLedger(str(tmp_path / "ledger.sqlite3"))
+    assert ledger.claim("failed-key", 100.0) is True
+    ledger.release("failed-key")
+    assert ledger.contains("failed-key") is False
+    assert ledger.claim("failed-key", 101.0) is True
