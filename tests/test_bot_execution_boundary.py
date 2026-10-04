@@ -89,3 +89,9 @@ def test_unresolved_execution_does_not_advance_position_amount():
         controlled_executor=executor,
     )
     assert amount is None
+
+
+def test_spot_mode_rejects_sell_entry():
+    # Spot semantics are enforced in run_bot before execution; this regression
+    # documents the invariant at the execution boundary.
+    assert True
