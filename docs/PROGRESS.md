@@ -244,3 +244,14 @@ Integrated the controlled execution boundary into the bot's non-dry-run entry pa
 
 ### Status
 The main entry-order safety gate is now wired. Close-order reconciliation, startup recovery integration, full test execution, and controlled testnet evidence remain outstanding release gates.
+
+## 2026-10-04 — Close Reconciliation & Spot Semantics
+
+### Work completed
+- Close orders now require authoritative reconciliation before the bot clears local position state.
+- The exchange wrapper now exposes fetch_order() so authoritative reconciliation works through the real broker adapter.
+- Spot mode rejects sell entries; plain spot sell orders are no longer interpreted as opening shorts.
+- Existing unresolved outcomes remain fail-closed and do not advance local position state.
+
+### Status
+Execution entry and close boundaries are hardened. Remaining release gates are startup recovery integration, execution/test evidence, controlled testnet/paper validation, and deployment verification.
