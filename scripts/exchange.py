@@ -77,6 +77,14 @@ class Exchange:
         """Load authoritative exchange market metadata without submitting orders."""
         return self.exchange.load_markets()
 
+    def fetch_positions(self, symbols: list[str]) -> list:
+        """Fetch authoritative exchange positions for startup recovery."""
+        try:
+            return self.exchange.fetch_positions(symbols)
+        except Exception as exc:
+            logger.error("Error fetching positions: %s", exc)
+            raise
+
     def get_balance(self, currency: str) -> dict:
         """Fetch current balance for a currency.
 
