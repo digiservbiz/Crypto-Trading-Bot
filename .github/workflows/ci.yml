@@ -43,5 +43,11 @@ jobs:
       - name: Run full automated test suite
         run: python -m pytest tests -v --tb=short
 
+      - name: Validate deployment configuration
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          python -c "import yaml; yaml.safe_load(open('config.yaml')); yaml.safe_load(open('docker-compose.yml')); yaml.safe_load(open('deployment/prometheus.yml'))"
+
       - name: Verify sample data exists
         run: python -c "import pandas as pd; df = pd.read_csv('data/sample_ohlcv.csv'); assert len(df) >= 4000, f'Expected >=4000 rows, got {len(df)}'"
