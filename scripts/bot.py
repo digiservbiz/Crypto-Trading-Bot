@@ -677,6 +677,19 @@ def run_bot(config: Dict[str, Any]) -> None:
     highest_prices: Dict[str, float] = {s: 0.0 for s in symbols}
     trade_amounts: Dict[str, float] = {s: 0.0 for s in symbols}
 
+    # Rebuild only conservative local state from authoritative exchange positions.
+    for recovered in startup_state.positions:
+        if recovered.symbol not in positions:
+            continue
+        if recovered.side == "long":
+            positions[recovered.symbol] = "buy"
+        elif recovered.side == "short":
+            positions[recovered.symbol] = "sell"
+        trade_amounts[recovered.symbol] = recovered.amount
+        if recovered.entry_price is not None:
+            entry_prices[recovered.symbol] = recovered.entry_price
+            highest_prices[recovered.symbol] = recovered.entry_price
+
     # ---- Portfolio-level state ----
     try:
         initial_balance = float(exchange.get_balance("USDT").get("free", 0.0))
