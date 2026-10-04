@@ -96,3 +96,50 @@ def test_controlled_executor_keeps_unresolved_when_fetch_is_unavailable(tmp_path
     result = executor.execute(approved(), "BTC/USDT", "buy", 50000, 1000, 100)
     assert result.state == "unresolved"
     assert result.order_id == "o3"
+
+
+def test_unknown_claim_survives_executor_restart(tmp_path):
+    class TimeoutExchange(FakeExchange):
+        def create_order(self, symbol, order_type, side, amount):
+            self.calls += 1
+            raise RuntimeError("timeout")
+
+    ledger_path = str(tmp_path / "ledger.sqlite3")
+    first = ControlledExecutor(
+        TimeoutExchange(None),
+        kill_switch=KillSwitch(str(tmp_path / "stop")),
+        ledger=PersistentExecutionLedger(ledger_path),
+    )
+    result = first.execute(approved(), "BTC/USDT", "buy", 50000, 1000, 100)
+    assert result.state == "unknown"
+
+    second_exchange = FakeExchange({"id": "must-not-submit", "status": "closed", "filled": 1.0})
+    second = ControlledExecutor(
+        second_exchange,
+        kill_switch=KillSwitch(str(tmp_path / "stop")),
+        ledger=PersistentExecutionLedger(ledger_path),
+    )
+    duplicate = second.execute(approved(), "BTC/USDT", "buy", 50000, 1000, 101)
+    assert duplicate.duplicate is True
+    assert second_exchange.calls == 0
+
+
+def test_terminal_failure_releases_claim_across_executor_restart(tmp_path):
+    ledger_path = str(tmp_path / "ledger.sqlite3")
+    first = ControlledExecutor(
+        FakeExchange({"id": "rejected", "status": "rejected", "filled": 0.0, "remaining": 1.0}),
+        kill_switch=KillSwitch(str(tmp_path / "stop")),
+        ledger=PersistentExecutionLedger(ledger_path),
+    )
+    result = first.execute(approved(), "BTC/USDT", "buy", 50000, 1000, 100)
+    assert result.state == "failed"
+
+    second_exchange = FakeExchange({"id": "retry", "status": "closed", "filled": 1.0, "remaining": 0.0})
+    second = ControlledExecutor(
+        second_exchange,
+        kill_switch=KillSwitch(str(tmp_path / "stop")),
+        ledger=PersistentExecutionLedger(ledger_path),
+    )
+    retry = second.execute(approved(), "BTC/USDT", "buy", 50000, 1000, 101)
+    assert retry.state == "filled"
+    assert second_exchange.calls == 1
