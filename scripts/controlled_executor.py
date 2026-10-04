@@ -80,6 +80,7 @@ class ControlledExecutor:
                 reconciliation.filled_amount,
             )
         if reconciliation.is_terminal_failure:
+            self.ledger.release(key)
             return ControlledExecutionResult(
                 "failed",
                 reconciliation.order_id,
