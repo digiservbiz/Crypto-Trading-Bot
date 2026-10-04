@@ -255,3 +255,14 @@ The main entry-order safety gate is now wired. Close-order reconciliation, start
 
 ### Status
 Execution entry and close boundaries are hardened. Remaining release gates are startup recovery integration, execution/test evidence, controlled testnet/paper validation, and deployment verification.
+
+## 2026-10-04 — Startup Recovery Integrated
+
+### Work completed
+- Exchange wrapper now exposes authoritative fetch_positions().
+- Bot startup performs exchange-backed position recovery before entering the trading loop.
+- Live mode fails closed when position recovery is unsupported, invalid, or unavailable.
+- Recovered long/short positions rebuild conservative local side, amount, and entry-price state.
+
+### Status
+Restart recovery is now part of the actual live startup path. Remaining release gates are durable execution evidence, full test execution, controlled testnet/paper validation, and deployment verification.
