@@ -15,7 +15,7 @@ from typing import Any
 from .execution_safety import ExecutionPolicy, build_trade_intent, validate_trade_intent
 from .idempotency import build_execution_key
 from .kill_switch import KillSwitch
-from .order_reconciliation import reconcile_order
+from .order_reconciliation import fetch_order_reconciliation, reconcile_order
 from .persistent_execution_ledger import PersistentExecutionLedger
 
 
@@ -66,6 +66,12 @@ class ControlledExecutor:
             return ControlledExecutionResult("unknown", "", amount, 0.0)
 
         reconciliation = reconcile_order(order, amount)
+
+        if not reconciliation.is_fully_filled and not reconciliation.is_terminal_failure:
+            authoritative = fetch_order_reconciliation(self.exchange, reconciliation.order_id, symbol, amount)
+            if authoritative is not None:
+                reconciliation = authoritative
+
         if reconciliation.is_fully_filled:
             return ControlledExecutionResult(
                 "filled",
