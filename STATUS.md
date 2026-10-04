@@ -10,26 +10,40 @@
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
 - **Controlled validation preparation:** 95%
-- **Automated test validation:** CI full-suite run pending
+- **Automated test validation:** PASS — latest full-suite CI run #225 succeeded on commit `1ce5051849abd8b08a70400c29ae9fdd1c228bca`
+- **Deployment readiness:** VPS deployment artifacts added; target-environment verification still required
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
-## 95% milestone
+## Validated engineering milestone
 
-Startup recovery is wired into the real bot startup path. Durable idempotency claims survive restarts and are released only after terminal broker failure, while ambiguous outcomes remain claimed to prevent duplicate submission. Sandbox mode is explicitly declared in config for controlled validation. CI has been upgraded from the agent-only suite to the full `tests/` suite.
+The complete automated test suite has now passed in CI, including the durable execution lifecycle tests added for cross-restart unknown outcomes and terminal broker-failure claim release. The live entry boundary, close reconciliation, startup recovery, kill switch, and persistent duplicate protection are implemented on the hardening branch.
+
+## Deployment preparation
+
+The repository now includes:
+- non-root Docker runtime configuration;
+- a Compose stack for bot, dashboard, and private Prometheus;
+- an environment-variable template that keeps secrets out of Git;
+- a Docker build context exclusion file;
+- a VPS deployment runbook;
+- persistent state mounts for execution ledger, kill switch, and bot state;
+- localhost-only dashboard/metrics bindings by default.
+
+These artifacts prepare the repository for VPS deployment, but they are not evidence that a target VPS has been secured or validated.
 
 ## Validation Status
 
-- The previous CI run (#214) passed the agent test suite.
-- The CI workflow now runs the complete `tests/` suite on the hardening branch.
-- The new full-suite CI run must complete successfully before automated validation is marked passed.
-- Controlled testnet/paper scenarios have not yet been executed.
+- Full automated test suite: **PASSED in CI #225**.
+- Controlled testnet/paper scenarios: **NOT YET EXECUTED**.
+- Target VPS deployment verification: **NOT YET EXECUTED**.
+- Funded live trading: **NOT READY**.
 
 ## Critical gates remaining
 
-1. Complete and pass the full automated test suite in CI.
-2. Execute controlled testnet/paper scenarios and record evidence.
-3. Verify deployment, secrets, network, and monitoring controls.
+1. Validate the container stack on the target VPS.
+2. Verify secrets, firewall/network exposure, persistent state, monitoring, and restart behavior.
+3. Execute controlled testnet/paper scenarios and record evidence.
 4. Perform final release-gate/operator review.
 
 The percentage is an engineering-progress estimate, not a financial-performance metric.
