@@ -9,13 +9,13 @@
 - **Branch:** `hardening/execution-safety-phase3`
 - **Base:** `master`
 - **Production/live-money status:** NOT READY
-- **Controlled validation preparation:** 70%
+- **Controlled validation preparation:** 75%
 - **Master branch:** Protected from this work; changes remain on the hardening branch until validated.
 - **PR:** #7 — Hardening: add final execution safety gate and invariants (draft)
 
-## 70% milestone
+## 75% milestone
 
-The validation layer now has deterministic evidence reporting and regression coverage for controlled execution outcomes. State-transition integration into the live bot path is still pending; no unverified state-transition test coverage is claimed here.
+The controlled execution boundary now resolves non-terminal submission responses through authoritative exchange order fetch when supported, while preserving fail-closed unresolved handling and no automatic retry. Regression coverage was added for both authoritative resolution and unresolved fallback.
 
 ## Validation Status
 
@@ -27,7 +27,7 @@ The validation layer now has deterministic evidence reporting and regression cov
 
 1. Safely integrate the final execution gate into the bot entry path.
 2. Prevent post-risk approval size mutation.
-3. Reconcile submitted orders with authoritative exchange state.
+3. Complete authoritative reconciliation for all supported broker outcomes and wire the boundary into the bot path.
 4. Wire startup position recovery into trading resume.
 5. Enforce explicit spot/futures semantics.
 6. Preserve durable duplicate protection through ambiguous outcomes and restarts.
