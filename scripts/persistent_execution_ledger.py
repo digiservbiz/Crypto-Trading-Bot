@@ -35,6 +35,14 @@ class PersistentExecutionLedger:
         except sqlite3.IntegrityError:
             return False
 
+    def release(self, execution_key: str) -> None:
+        """Explicitly release a claim only for a terminal broker failure."""
+        key = str(execution_key or "").strip()
+        if not key:
+            return
+        with sqlite3.connect(self.path) as db:
+            db.execute("DELETE FROM execution_keys WHERE execution_key = ?", (key,))
+
     def contains(self, execution_key: str) -> bool:
         key = str(execution_key or "").strip()
         if not key:
