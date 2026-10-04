@@ -3,6 +3,7 @@ services:
     build: .
     restart: unless-stopped
     env_file: [.env]
+    command: ["python", "-m", "scripts.bot", "--config", "config.yaml"]
     environment:
       TZ: ${TZ:-UTC}
       DRY_RUN: ${DRY_RUN:-true}
